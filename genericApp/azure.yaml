@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: genericApp
+metadata:
+    template: functions-connectors-typescript@1.0.0
+services:
+    api:
+        project: .
+        language: ts
+        host: function
+hooks:
+    prepackage:
+        windows:
+            shell: pwsh
+            run: npm install; npm run build
+        posix:
+            shell: sh
+            run: npm install && npm run build
