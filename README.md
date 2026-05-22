@@ -4,7 +4,7 @@ End-to-end TypeScript samples demonstrating [`@azure/functions-extensions-connec
 
 Each sample is an independent Azure Functions app, organised by connector and deployable with a single `azd up`.
 
-## Samples
+## Samples at a glance
 
 | App | Connector | Triggers demonstrated |
 |---|---|---|
@@ -15,9 +15,67 @@ Each sample is an independent Azure Functions app, organised by connector and de
 | [`sharepointApp/`](./sharepointApp) | SharePoint Online | `onNewFile`, `onUpdatedFile` |
 | [`teamsApp/`](./teamsApp) | Microsoft Teams | `onNewChannelMessage`, `onNewChannelMessageMentioningMe`, `onGroupMembershipAdd`, `onGroupMembershipRemoval` |
 
+> **Coverage:** All 15 first-class trigger registrations exposed by `@azure/functions-extensions-connectors@0.0.2-preview` are demonstrated by at least one sample function.
+
+## What each sample shows
+
+### `azureblobApp` — Azure Blob
+
+A single function `OnAzureBlobUpdatedFile` that fires when blobs in a watched Azure Blob container are updated. Receives a typed `AzureBlobFileTriggerContext` whose `context.files` is `AzureBlobMetadata[]` — read `Name`, `Path`, `Size`, `LastModified` with full IntelliSense.
+
+### `kustoApp` — Azure Data Explorer (Kusto)
+
+`OnKustoQueryResult` runs whenever the configured Kusto query produces a non-empty result. Each row arrives as a `KustoRow` (record-of-unknown) under `context.rows`.
+
+### `office365App` — Office 365 Outlook
+
+Five Outlook triggers:
+
+| Function | Fires when… |
+|---|---|
+| `OnNewEmail` | A new email lands in the watched mailbox/folder |
+| `OnFlaggedEmail` | An email is flagged (follow-up) |
+| `OnNewMentionMeEmail` | A new email @-mentions the connection identity |
+| `OnNewCalendarEvent` | A new calendar event is created |
+| `OnUpcomingEvent` | A calendar event is about to start (lead-time configured on the connector) |
+
+Email triggers expose `context.emails` (`GraphClientReceiveMessage[]`); calendar triggers expose `context.calendarEvents` (`GraphCalendarEventClientReceive[]`).
+
+### `onedriveApp` — OneDrive for Business
+
+`OnOneDriveNewFile` and `OnOneDriveUpdatedFile`. Both expose `context.files` as `OneDriveBlobMetadata[]`.
+
+### `sharepointApp` — SharePoint Online
+
+`OnSharepointNewFile` and `OnSharepointUpdatedFile`. Both expose `context.files` as `BlobMetadata[]` (the SharePoint SDK item type).
+
+### `teamsApp` — Microsoft Teams
+
+Four Teams triggers:
+
+| Function | Fires when… | Named context property |
+|---|---|---|
+| `OnNewChannelMessage` | A new channel message is posted | `messages: ChatMessage[]` |
+| `OnNewChannelMessageMentioningMe` | A channel message @-mentions the connection identity | `messages: ChatMessage[]` |
+| `OnGroupMembershipAdd` | A user is added to a Teams group | `members: GroupMembershipChange[]` |
+| `OnGroupMembershipRemoval` | A user is removed from a Teams group | `members: GroupMembershipChange[]` |
+
+## Connectors **not** sampled (action-only)
+
+The following connectors in `@azure/connectors@0.2.0-preview` expose **no trigger methods** and are intentionally omitted. They are consumed as action clients directly via `@azure/connectors`:
+
+| Connector | What you'd use it for | How to consume |
+|---|---|---|
+| `arm` | Subscription, resource group, deployment management | `new ArmClient(...)` from `@azure/connectors/generated/ArmExtensions` |
+| `azuremonitorlogs` | KQL `queryData` / `visualizeQuery` | `new AzuremonitorlogsClient(...)` |
+| `mq` | IBM MQ read / receive / send / delete | `new MqClient(...)` |
+| `msgraphgroupsanduser` | Directory list users / groups / licenses | `new MsgraphgroupsanduserClient(...)` |
+| `office365users` | User profile / photo / search | `new Office365usersClient(...)` |
+| `smtp` | `sendEmail` | `new SmtpClient(...)` |
+
 ## Prerequisites
 
-- [Node.js 20+](https://nodejs.org/) (the connector extension package targets `>=24.0.0`; samples relax to `>=20.0.0` for broader runtime support).
+- [Node.js 20+](https://nodejs.org/).
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local).
 - [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd).
 - An Azure subscription.
@@ -31,52 +89,94 @@ npm install
 npm start
 ```
 
-Update `local.settings.json` with the runtime URL and access token for your connector before starting.
+Update `local.settings.json` with the runtime URL and access token for your connector before starting. The keys differ per connector (e.g. `Office365Connection` / `OFFICE365_TOKEN`, `TeamsConnection` / `TEAMS_TOKEN`).
 
 ## Deploy a sample to Azure
 
 ```bash
 cd <connectorApp>
+azd auth login
 azd up
 ```
 
-`azd up` provisions:
+`azd up` provisions a resource group containing:
 
-- An Azure Storage account (Function App backing store)
-- A Linux Consumption Function App running Node 20
-- Application Insights for observability
+- Azure Storage account (Function App backing store)
+- Linux Consumption Function App (Node 20) with system-assigned managed identity
+- Application Insights + Log Analytics workspace
 
-After provisioning, `azd` packages the TypeScript app, transpiles it, and deploys.
+It then runs the `prepackage` hook (`npm install && npm run build`) and deploys the compiled output.
 
-> **Note:** The connector trigger itself requires the **Experimental** Functions Extension Bundle (`Microsoft.Azure.Functions.ExtensionBundle.Experimental`, version `[4.6.*, 5.0.0)`) and a valid connector runtime URL/token. Configure them as app settings on the deployed Function App before invoking the triggers (see each app's README).
+After provisioning, configure the connector runtime URL and token:
 
-## Repo layout
+```bash
+azd env set CONNECTOR_RUNTIME_URL '<your-connector-runtime-url>'
+azd env set CONNECTOR_TOKEN '<your-token>'
+azd provision   # re-runs the Bicep to push the new app settings
+```
+
+> **Note:** The connector trigger requires the **Experimental** Functions Extension Bundle (`Microsoft.Azure.Functions.ExtensionBundle.Experimental`, version `[4.6.*, 5.0.0)`) — already pre-configured in every sample's `host.json`.
+
+## Repository layout
 
 ```
 functions-connectors-typescript/
+├── README.md
+├── PR_DESCRIPTION.md
+├── .gitignore
+├── .scaffold/                  # shared template (host.json, tsconfig, infra/, src/index.ts)
 ├── azureblobApp/
 ├── kustoApp/
 ├── office365App/
 ├── onedriveApp/
 ├── sharepointApp/
-├── teamsApp/
-└── README.md
+└── teamsApp/
 ```
 
-Each app folder contains:
+Each app folder is self-contained:
 
 ```
 <connectorApp>/
 ├── src/
-│   ├── index.ts                # app.setup() entry
+│   ├── index.ts                # app.setup({ enableHttpStream: true })
 │   └── functions/              # one file per trigger
 ├── infra/
-│   ├── main.bicep              # Storage + Function App + App Insights
-│   └── main.parameters.json
-├── azure.yaml                  # azd service definition
-├── host.json                   # extension bundle + logging
-├── local.settings.json         # local connector runtime URL + token placeholders
+│   ├── main.bicep              # subscription-scope: creates RG, delegates to resources.bicep
+│   ├── resources.bicep         # Storage + App Insights + Function App
+│   └── main.parameters.json    # ${AZURE_ENV_NAME}, ${AZURE_LOCATION}, ${CONNECTOR_RUNTIME_URL=}, ${CONNECTOR_TOKEN=}
+├── azure.yaml                  # azd service definition + prepackage hook
+├── host.json                   # Experimental extension bundle + logging
+├── local.settings.json         # placeholders for runtime URL + token
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
+
+## How the trigger code looks
+
+Every sample handler is a thin first-class wrapper that gives you a typed `context` plus a named alias:
+
+```typescript
+import { InvocationContext } from '@azure/functions';
+import { connectors, EmailTriggerContext } from '@azure/functions-extensions-connectors';
+
+connectors.office365.onNewEmail('OnNewEmail', {
+    handler: async (context: EmailTriggerContext, invocationContext: InvocationContext) => {
+        for (const email of context.emails) {
+            invocationContext.log(`Subject: '${email.subject}'.`);
+        }
+        return context.rawPayload;
+    },
+});
+```
+
+- `context.emails` (or `files`, `messages`, `members`, `rows`, `calendarEvents`) is the typed array — same data as `context.items`, just named for clarity.
+- `context.payload` is the normalised envelope (`{ body: { value: T[] } }`).
+- `context.rawPayload` is the original payload — useful for forwarding or persisting.
+
+## Related repos
+
+| Repo | Purpose |
+|---|---|
+| [Azure/Connectors-NodeJS-SDK](https://github.com/Azure/Connectors-NodeJS-SDK) | `@azure/connectors` — generated TypeScript SDK for Azure Logic Apps connectors |
+| [Azure/azure-functions-nodejs-extensions](https://github.com/Azure/azure-functions-nodejs-extensions) | `@azure/functions-extensions-connectors` — the binding extension consumed by these samples |
