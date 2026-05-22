@@ -1,17 +1,20 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the MIT License.
 
-import { InvocationContext } from '@azure/functions';
-import { ChatMessage, connectorTrigger } from '@azure/functions-extensions-connectors';
+import { ChatMessage } from '@azure/connectors/generated/TeamsExtensions';
+import { app, InvocationContext } from '@azure/functions';
+import { unwrapTriggerPayload } from '../unwrapTriggerPayload.js';
 
-connectorTrigger<ChatMessage>('OnGenericTeamsChannelMessage', {
-    handler: async (context, invocationContext: InvocationContext) => {
-        invocationContext.log('OnGenericTeamsChannelMessage (generic API) trigger received.');
+app.connectorTrigger('OnGenericTeamsChannelMessage', {
+    handler: async (triggerInput: unknown, context: InvocationContext): Promise<unknown> => {
+        context.log('OnGenericTeamsChannelMessage trigger received.');
 
-        for (const message of context.items) {
-            invocationContext.log(`MessageId: '${message.id}'.`);
+        const [, messages] = unwrapTriggerPayload<ChatMessage>(triggerInput);
+
+        for (const message of messages) {
+            context.log(`MessageId: '${message.id}'.`);
         }
 
-        return context.rawPayload;
+        return triggerInput;
     },
 });

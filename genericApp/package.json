@@ -1,7 +1,7 @@
 {
   "name": "genericapp",
   "version": "1.0.0",
-  "description": "Azure Functions sample using the generic connectorTrigger<TItem> API from @azure/functions-extensions-connectors — works for any Azure Logic Apps connector, including those without first-class wrappers.",
+  "description": "Azure Functions sample using app.connectorTrigger from @azure/functions directly, with item types from @azure/connectors. No dependency on @azure/functions-extensions-connectors.",
   "type": "module",
   "main": "dist/functions/*.js",
   "scripts": {
@@ -15,8 +15,7 @@
   },
   "dependencies": {
     "@azure/connectors": "0.2.0-preview",
-    "@azure/functions": "^4.16.0",
-    "@azure/functions-extensions-connectors": "0.0.2-preview"
+    "@azure/functions": "^4.16.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.41",

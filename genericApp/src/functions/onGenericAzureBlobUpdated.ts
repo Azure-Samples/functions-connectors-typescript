@@ -1,23 +1,25 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the MIT License.
 
-import { InvocationContext } from '@azure/functions';
-import { AzureBlobMetadata, connectorTrigger } from '@azure/functions-extensions-connectors';
+import { BlobMetadata } from '@azure/connectors/generated/AzureblobExtensions';
+import { app, InvocationContext } from '@azure/functions';
+import { unwrapTriggerPayload } from '../unwrapTriggerPayload.js';
 
-// NOTE(swapnilnagar): Uses the lower-level generic connectorTrigger<TItem> API instead of
-// connectors.azureblob.onUpdatedFile. The function name still binds to the AzureBlob
-// onUpdatedFile operation on the host side; the generic API just gives you raw control
-// over the item type without depending on a first-class wrapper.
-connectorTrigger<AzureBlobMetadata>('OnGenericAzureBlobUpdated', {
-    handler: async (context, invocationContext: InvocationContext) => {
-        invocationContext.log('OnGenericAzureBlobUpdated (generic API) trigger received.');
+// NOTE(swapnilnagar): Uses app.connectorTrigger from @azure/functions directly — no
+// dependency on @azure/functions-extensions-connectors. Item type comes from the
+// Azure Blob connector's generated SDK in @azure/connectors.
+app.connectorTrigger('OnGenericAzureBlobUpdated', {
+    handler: async (triggerInput: unknown, context: InvocationContext): Promise<unknown> => {
+        context.log('OnGenericAzureBlobUpdated trigger received.');
 
-        for (const file of context.items) {
-            invocationContext.log(`Name: '${file.Name}'.`);
-            invocationContext.log(`Path: '${file.Path}'.`);
-            invocationContext.log(`LastModified: '${file.LastModified}'.`);
+        const [, files] = unwrapTriggerPayload<BlobMetadata>(triggerInput);
+
+        for (const file of files) {
+            context.log(`Name: '${file.Name}'.`);
+            context.log(`Path: '${file.Path}'.`);
+            context.log(`LastModified: '${file.LastModified}'.`);
         }
 
-        return context.rawPayload;
+        return triggerInput;
     },
 });

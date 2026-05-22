@@ -1,18 +1,21 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the MIT License.
 
-import { InvocationContext } from '@azure/functions';
-import { connectorTrigger, GraphClientReceiveMessage } from '@azure/functions-extensions-connectors';
+import { GraphClientReceiveMessage } from '@azure/connectors/generated/Office365Extensions';
+import { app, InvocationContext } from '@azure/functions';
+import { unwrapTriggerPayload } from '../unwrapTriggerPayload.js';
 
-connectorTrigger<GraphClientReceiveMessage>('OnGenericOffice365NewEmail', {
-    handler: async (context, invocationContext: InvocationContext) => {
-        invocationContext.log('OnGenericOffice365NewEmail (generic API) trigger received.');
+app.connectorTrigger('OnGenericOffice365NewEmail', {
+    handler: async (triggerInput: unknown, context: InvocationContext): Promise<unknown> => {
+        context.log('OnGenericOffice365NewEmail trigger received.');
 
-        for (const email of context.items) {
-            invocationContext.log(`Subject: '${email.subject}'.`);
-            invocationContext.log(`From: '${email.from}'.`);
+        const [, emails] = unwrapTriggerPayload<GraphClientReceiveMessage>(triggerInput);
+
+        for (const email of emails) {
+            context.log(`Subject: '${email.subject}'.`);
+            context.log(`From: '${email.from}'.`);
         }
 
-        return context.rawPayload;
+        return triggerInput;
     },
 });

@@ -1,42 +1,86 @@
 # genericApp
 
-Azure Functions sample demonstrating the **generic `connectorTrigger<TItem>` API** from
-[`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors).
+Azure Functions sample using **`app.connectorTrigger` from [`@azure/functions`](https://www.npmjs.com/package/@azure/functions) directly** — with item types pulled from the [`@azure/connectors`](https://www.npmjs.com/package/@azure/connectors) generated SDK.
 
-Use the generic API when you want to:
+> **No dependency on `@azure/functions-extensions-connectors`.**
 
-- Bind a trigger for a connector that does **not** have a first-class wrapper yet.
-- Define your own item shape (custom or partial types).
-- Bypass the typed `connectors.<connector>.<trigger>()` helpers entirely.
+Use this approach when you want to:
 
-> The function **name** still binds to the connector + operation on the host side. The
-> generic API only changes how the handler is declared in TypeScript — it does **not**
-> change which operation the function listens to.
+- Avoid the extension package entirely and depend only on `@azure/functions` + (optionally) `@azure/connectors`.
+- Bind a trigger for a connector that does **not** have a first-class wrapper in the extension package.
+- Define a custom item shape (partial / extended / not-yet-in-SDK).
+
+## How it works
+
+`app.connectorTrigger` delivers the raw AI Gateway payload to your handler. The payload follows the standard envelope shape — modelled by `TriggerCallbackPayload<TItem>` in `@azure/connectors`:
+
+```jsonc
+{
+    "body": {
+        "value": [ /* TItem[] */ ]
+    }
+}
+```
+
+A tiny shared helper `unwrapTriggerPayload` (in [`src/unwrapTriggerPayload.ts`](./src/unwrapTriggerPayload.ts)) handles:
+
+- string-vs-object normalisation (`typeof triggerInput === 'string' ? JSON.parse(...) : ...`)
+- the `payload.body?.value ?? []` unwrap
+
+Each function then imports its connector-specific item type from `@azure/connectors/generated/<Connector>Extensions` and types the unwrap call accordingly.
 
 ## Triggers included
 
-| Function | Connector | Item type |
-|---|---|---|
-| `OnGenericAzureBlobUpdated` | Azure Blob | `AzureBlobMetadata` |
-| `OnGenericOffice365NewEmail` | Office 365 | `GraphClientReceiveMessage` |
-| `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` |
-| `OnGenericTeamsChannelMessage` | Teams | `ChatMessage` |
-| `OnGenericCustomConnectorEvent` | _any custom connector_ | inline `CustomConnectorItem` |
+| Function | Connector | Item type | Source |
+|---|---|---|---|
+| `OnGenericAzureBlobUpdated` | Azure Blob | `BlobMetadata` | `@azure/connectors/generated/AzureblobExtensions` |
+| `OnGenericOffice365NewEmail` | Office 365 | `GraphClientReceiveMessage` | `@azure/connectors/generated/Office365Extensions` |
+| `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` | `@azure/connectors/generated/SharepointonlineExtensions` |
+| `OnGenericTeamsChannelMessage` | Teams | `ChatMessage` | `@azure/connectors/generated/TeamsExtensions` |
+| `OnGenericCustomConnectorEvent` | _any custom connector_ | inline `CustomConnectorItem` | declared in the function file |
 
-Each handler receives a `ConnectorTriggerContext<TItem>`:
+## Example: full trigger function
 
-- `context.items` — the typed item array (`TItem[]`).
-- `context.payload` — the full envelope `{ body: { value: TItem[] } }`.
-- `context.rawPayload` — the original payload object.
-- `context.toJSON()` — serialised payload (useful for output bindings).
+```typescript
+import { BlobMetadata } from '@azure/connectors/generated/AzureblobExtensions';
+import { app, InvocationContext } from '@azure/functions';
+import { unwrapTriggerPayload } from '../unwrapTriggerPayload.js';
 
-## When to use this vs. the first-class API
+app.connectorTrigger('OnGenericAzureBlobUpdated', {
+    handler: async (triggerInput: unknown, context: InvocationContext): Promise<unknown> => {
+        const [, files] = unwrapTriggerPayload<BlobMetadata>(triggerInput);
+
+        for (const file of files) {
+            context.log(`Name: '${file.Name}'.`);
+        }
+
+        return triggerInput;
+    },
+});
+```
+
+## Dependencies
+
+```jsonc
+{
+    "dependencies": {
+        "@azure/connectors": "0.2.0-preview",   // only for generated item types + TriggerCallbackPayload
+        "@azure/functions":  "^4.16.0"
+    }
+}
+```
+
+You can drop `@azure/connectors` entirely if you declare item types inline (see `OnGenericCustomConnectorEvent`).
+
+## When to use this vs. the extension package
 
 | Use case | API |
 |---|---|
-| Connector wrapped in `connectors.<x>.<y>()` (e.g. SharePoint, Teams) | `connectors.<connector>.<trigger>()` (preferred — named context fields like `files`, `messages`) |
-| Connector without a first-class wrapper | `connectorTrigger<TItem>(...)` (this sample) |
-| Custom payload type / partial type | `connectorTrigger<MyType>(...)` (this sample) |
+| Connector wrapped in `connectors.<x>.<y>()` (e.g. SharePoint, Teams) | `connectors.<connector>.<trigger>()` from `@azure/functions-extensions-connectors` (preferred — named context fields like `files`, `messages`, automatic envelope unwrap, `rawPayload` accessor) |
+| You don't want the extension dep | `app.connectorTrigger(...)` from `@azure/functions` + `TriggerCallbackPayload<TItem>` from `@azure/connectors` (this sample) |
+| Connector without any SDK type at all | `app.connectorTrigger(...)` + inline type (`OnGenericCustomConnectorEvent`) |
+
+The extension package is essentially a typed wrapper around `app.connectorTrigger` that does the same unwrap + JSON-parse logic shown in [`src/unwrapTriggerPayload.ts`](./src/unwrapTriggerPayload.ts).
 
 ## Run locally
 
@@ -62,8 +106,9 @@ azd provision
 ```
 genericApp/
 ├── src/
-│   ├── index.ts              # app.setup({ enableHttpStream: true })
-│   └── functions/            # one file per generic trigger
+│   ├── index.ts                    # app.setup({ enableHttpStream: true })
+│   ├── unwrapTriggerPayload.ts     # shared envelope-unwrap helper
+│   └── functions/                  # one file per generic trigger
 ├── infra/
 │   ├── main.bicep
 │   ├── resources.bicep

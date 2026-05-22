@@ -1,18 +1,21 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the MIT License.
 
-import { InvocationContext } from '@azure/functions';
-import { BlobMetadata, connectorTrigger } from '@azure/functions-extensions-connectors';
+import { BlobMetadata } from '@azure/connectors/generated/SharepointonlineExtensions';
+import { app, InvocationContext } from '@azure/functions';
+import { unwrapTriggerPayload } from '../unwrapTriggerPayload.js';
 
-connectorTrigger<BlobMetadata>('OnGenericSharepointNewFile', {
-    handler: async (context, invocationContext: InvocationContext) => {
-        invocationContext.log('OnGenericSharepointNewFile (generic API) trigger received.');
+app.connectorTrigger('OnGenericSharepointNewFile', {
+    handler: async (triggerInput: unknown, context: InvocationContext): Promise<unknown> => {
+        context.log('OnGenericSharepointNewFile trigger received.');
 
-        for (const file of context.items) {
-            invocationContext.log(`Name: '${file.Name}'.`);
-            invocationContext.log(`Path: '${file.Path}'.`);
+        const [, files] = unwrapTriggerPayload<BlobMetadata>(triggerInput);
+
+        for (const file of files) {
+            context.log(`Name: '${file.Name}'.`);
+            context.log(`Path: '${file.Path}'.`);
         }
 
-        return context.rawPayload;
+        return triggerInput;
     },
 });

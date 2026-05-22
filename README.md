@@ -14,9 +14,9 @@ Each sample is an independent Azure Functions app, organised by connector and de
 | [`onedriveApp/`](./onedriveApp) | OneDrive for Business | `onNewFile`, `onUpdatedFile` |
 | [`sharepointApp/`](./sharepointApp) | SharePoint Online | `onNewFile`, `onUpdatedFile` |
 | [`teamsApp/`](./teamsApp) | Microsoft Teams | `onNewChannelMessage`, `onNewChannelMessageMentioningMe`, `onGroupMembershipAdd`, `onGroupMembershipRemoval` |
-| [`genericApp/`](./genericApp) | _any connector_ (uses generic `connectorTrigger<TItem>` API) | Azure Blob, Office 365, SharePoint, Teams, and a custom-type example |
+| [`genericApp/`](./genericApp) | _any connector_ — uses `app.connectorTrigger` from `@azure/functions` directly (no `@azure/functions-extensions-connectors` dep) | Azure Blob, Office 365, SharePoint, Teams, and a custom-type example |
 
-> **Coverage:** All 15 first-class trigger registrations exposed by `@azure/functions-extensions-connectors@0.0.2-preview` are demonstrated by at least one sample function. The `genericApp` additionally demonstrates the lower-level `connectorTrigger<TItem>` API for connectors without a first-class wrapper or for custom item types.
+> **Coverage:** All 15 first-class trigger registrations exposed by `@azure/functions-extensions-connectors@0.0.2-preview` are demonstrated by at least one sample function. The `genericApp` additionally shows how to wire connector triggers using only `@azure/functions` + `@azure/connectors`, for callers who don't want the extension package.
 
 ## What each sample shows
 
@@ -61,32 +61,37 @@ Four Teams triggers:
 | `OnGroupMembershipAdd` | A user is added to a Teams group | `members: GroupMembershipChange[]` |
 | `OnGroupMembershipRemoval` | A user is removed from a Teams group | `members: GroupMembershipChange[]` |
 
-### `genericApp` — generic `connectorTrigger<TItem>` API
+### `genericApp` — `app.connectorTrigger` from `@azure/functions` (no extension dep)
 
-Demonstrates the **lower-level generic API** that works for any Azure Logic Apps connector — including connectors that do not have a first-class wrapper. Use it when you need full control over the item type, or when wiring a custom / not-yet-wrapped connector.
+Demonstrates wiring connector triggers using **only** [`@azure/functions`](https://www.npmjs.com/package/@azure/functions) and [`@azure/connectors`](https://www.npmjs.com/package/@azure/connectors) — **no dependency on `@azure/functions-extensions-connectors`**. Use this when you want minimal dependencies, when binding a connector without a first-class wrapper, or when working with custom item types.
 
-| Function | Connector | Item type |
+| Function | Connector | Item type (from `@azure/connectors/generated/...`) |
 |---|---|---|
-| `OnGenericAzureBlobUpdated` | Azure Blob | `AzureBlobMetadata` |
-| `OnGenericOffice365NewEmail` | Office 365 | `GraphClientReceiveMessage` |
-| `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` |
-| `OnGenericTeamsChannelMessage` | Teams | `ChatMessage` |
+| `OnGenericAzureBlobUpdated` | Azure Blob | `BlobMetadata` (AzureblobExtensions) |
+| `OnGenericOffice365NewEmail` | Office 365 | `GraphClientReceiveMessage` (Office365Extensions) |
+| `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` (SharepointonlineExtensions) |
+| `OnGenericTeamsChannelMessage` | Teams | `ChatMessage` (TeamsExtensions) |
 | `OnGenericCustomConnectorEvent` | _any custom connector_ | inline `CustomConnectorItem` |
 
-Handlers receive a `ConnectorTriggerContext<TItem>` whose `context.items` is the typed item array. The first-class `connectors.<x>.<y>()` helpers are preferred when available because they add named fields (`files`, `messages`, `emails`, ...) on top of `items`; `genericApp` is the escape hatch when that wrapper does not exist.
+The handler receives the raw AI Gateway payload. A small shared helper `unwrapTriggerPayload<TItem>` normalises string-vs-object input and unwraps `payload.body.value` into a typed item array using `TriggerCallbackPayload<TItem>` from `@azure/connectors`.
 
 ```typescript
-import { AzureBlobMetadata, connectorTrigger } from '@azure/functions-extensions-connectors';
+import { BlobMetadata } from '@azure/connectors/generated/AzureblobExtensions';
+import { app, InvocationContext } from '@azure/functions';
+import { unwrapTriggerPayload } from '../unwrapTriggerPayload.js';
 
-connectorTrigger<AzureBlobMetadata>('OnGenericAzureBlobUpdated', {
-    handler: async (context, invocationContext) => {
-        for (const file of context.items) {
-            invocationContext.log(`Name: '${file.Name}'.`);
+app.connectorTrigger('OnGenericAzureBlobUpdated', {
+    handler: async (triggerInput: unknown, context: InvocationContext): Promise<unknown> => {
+        const [, files] = unwrapTriggerPayload<BlobMetadata>(triggerInput);
+        for (const file of files) {
+            context.log(`Name: '${file.Name}'.`);
         }
-        return context.rawPayload;
+        return triggerInput;
     },
 });
 ```
+
+See [`genericApp/README.md`](./genericApp/README.md) for a full comparison with the extension-package approach.
 
 ## Connectors **not** sampled (action-only)
 
