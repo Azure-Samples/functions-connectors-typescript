@@ -14,8 +14,9 @@ Each sample is an independent Azure Functions app, organised by connector and de
 | [`onedriveApp/`](./onedriveApp) | OneDrive for Business | `onNewFile`, `onUpdatedFile` |
 | [`sharepointApp/`](./sharepointApp) | SharePoint Online | `onNewFile`, `onUpdatedFile` |
 | [`teamsApp/`](./teamsApp) | Microsoft Teams | `onNewChannelMessage`, `onNewChannelMessageMentioningMe`, `onGroupMembershipAdd`, `onGroupMembershipRemoval` |
+| [`genericApp/`](./genericApp) | _any connector_ (uses generic `connectorTrigger<TItem>` API) | Azure Blob, Office 365, SharePoint, Teams, and a custom-type example |
 
-> **Coverage:** All 15 first-class trigger registrations exposed by `@azure/functions-extensions-connectors@0.0.2-preview` are demonstrated by at least one sample function.
+> **Coverage:** All 15 first-class trigger registrations exposed by `@azure/functions-extensions-connectors@0.0.2-preview` are demonstrated by at least one sample function. The `genericApp` additionally demonstrates the lower-level `connectorTrigger<TItem>` API for connectors without a first-class wrapper or for custom item types.
 
 ## What each sample shows
 
@@ -59,6 +60,33 @@ Four Teams triggers:
 | `OnNewChannelMessageMentioningMe` | A channel message @-mentions the connection identity | `messages: ChatMessage[]` |
 | `OnGroupMembershipAdd` | A user is added to a Teams group | `members: GroupMembershipChange[]` |
 | `OnGroupMembershipRemoval` | A user is removed from a Teams group | `members: GroupMembershipChange[]` |
+
+### `genericApp` — generic `connectorTrigger<TItem>` API
+
+Demonstrates the **lower-level generic API** that works for any Azure Logic Apps connector — including connectors that do not have a first-class wrapper. Use it when you need full control over the item type, or when wiring a custom / not-yet-wrapped connector.
+
+| Function | Connector | Item type |
+|---|---|---|
+| `OnGenericAzureBlobUpdated` | Azure Blob | `AzureBlobMetadata` |
+| `OnGenericOffice365NewEmail` | Office 365 | `GraphClientReceiveMessage` |
+| `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` |
+| `OnGenericTeamsChannelMessage` | Teams | `ChatMessage` |
+| `OnGenericCustomConnectorEvent` | _any custom connector_ | inline `CustomConnectorItem` |
+
+Handlers receive a `ConnectorTriggerContext<TItem>` whose `context.items` is the typed item array. The first-class `connectors.<x>.<y>()` helpers are preferred when available because they add named fields (`files`, `messages`, `emails`, ...) on top of `items`; `genericApp` is the escape hatch when that wrapper does not exist.
+
+```typescript
+import { AzureBlobMetadata, connectorTrigger } from '@azure/functions-extensions-connectors';
+
+connectorTrigger<AzureBlobMetadata>('OnGenericAzureBlobUpdated', {
+    handler: async (context, invocationContext) => {
+        for (const file of context.items) {
+            invocationContext.log(`Name: '${file.Name}'.`);
+        }
+        return context.rawPayload;
+    },
+});
+```
 
 ## Connectors **not** sampled (action-only)
 
@@ -130,7 +158,8 @@ functions-connectors-typescript/
 ├── office365App/
 ├── onedriveApp/
 ├── sharepointApp/
-└── teamsApp/
+├── teamsApp/
+└── genericApp/                  # generic connectorTrigger<TItem> API
 ```
 
 Each app folder is self-contained:
