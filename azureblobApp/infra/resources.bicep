@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 // ----------------------------------------------------------------------------
-// Resource-group-scoped resources: Storage, App Insights, Function App.
+// Resource-group-scoped resources: Storage, App Insights, Function App,
+// Connector Namespace + Azure Blob connection.
 // Uses the Flex Consumption (FC1) hosting plan.
 // ----------------------------------------------------------------------------
 
@@ -12,12 +13,13 @@ param environmentName string
 @minLength(1)
 param location string
 
+@description('Optional override for the Connector Namespace location. Connector Namespace is currently only available in a subset of regions, so we default to a known-good region rather than the function app location.')
+param connectorNamespaceLocation string = 'brazilsouth'
+
 param tags object = {}
 
-param connectorRuntimeUrl string = ''
-
-@secure()
-param connectorToken string = ''
+@description('Optional. AAD object id of a user (typically the deployer) to grant access to the connection so the same code can be debugged locally with `az login`.')
+param userPrincipalId string = ''
 
 @description('Maximum scale-out instance count for the Flex Consumption plan.')
 param maximumInstanceCount int = 100
@@ -36,6 +38,8 @@ var planName = 'plan-${environmentName}-${resourceToken}'
 var functionAppName = 'func-${environmentName}-${resourceToken}'
 var appInsightsName = 'appi-${environmentName}-${resourceToken}'
 var logAnalyticsName = 'log-${environmentName}-${resourceToken}'
+var connectorNamespaceName = 'cn${resourceToken}'
+var azureblobConnectionName = 'azureblob-${resourceToken}'
 var deploymentContainerName = 'app-package'
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
@@ -132,24 +136,6 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
     siteConfig: {
       ftpsState: 'FtpsOnly'
       minTlsVersion: '1.2'
-      appSettings: [
-        {
-          name: 'AzureWebJobsStorage__accountName'
-          value: storage.name
-        }
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: appInsights.properties.ConnectionString
-        }
-        {
-          name: 'ConnectorRuntimeUrl'
-          value: connectorRuntimeUrl
-        }
-        {
-          name: 'ConnectorToken'
-          value: connectorToken
-        }
-      ]
     }
   }
   tags: union(tags, {
@@ -158,6 +144,28 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   dependsOn: [
     deploymentContainer
   ]
+}
+
+module connectorNamespace './connectorNamespace.bicep' = {
+  name: 'connectorNamespace-${connectorNamespaceName}'
+  params: {
+    name: connectorNamespaceName
+    location: connectorNamespaceLocation
+    tags: tags
+    azureblobConnectionName: azureblobConnectionName
+    functionAppPrincipalId: functionApp.identity.principalId
+    userPrincipalId: userPrincipalId
+  }
+}
+
+resource functionAppSettings 'Microsoft.Web/sites/config@2024-04-01' = {
+  parent: functionApp
+  name: 'appsettings'
+  properties: {
+    AzureWebJobsStorage__accountName: storage.name
+    APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
+    AzureBlobConnection: connectorNamespace.outputs.azureblobConnectionRuntimeUrl
+  }
 }
 
 // Grant the function app's managed identity access to the storage account
@@ -185,5 +193,20 @@ resource storageBlobDataContributor 'Microsoft.Authorization/roleAssignments@202
   }
 }
 
+// Grant the deployer user Storage Blob Data Contributor so `azd deploy` can
+// upload the package zip to the Flex Consumption deployment container.
+resource deployerStorageBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(userPrincipalId)) {
+  scope: storage
+  name: guid(storage.id, userPrincipalId, storageBlobDataContributorRoleId)
+  properties: {
+    principalId: userPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    principalType: 'User'
+  }
+}
+
 output functionAppName string = functionApp.name
 output functionAppHostname string = functionApp.properties.defaultHostName
+output connectorNamespaceName string = connectorNamespace.outputs.name
+output azureblobConnectionName string = connectorNamespace.outputs.azureblobConnectionName
+output azureblobConnectionRuntimeUrl string = connectorNamespace.outputs.azureblobConnectionRuntimeUrl
