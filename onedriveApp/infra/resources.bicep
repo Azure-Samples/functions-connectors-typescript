@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 // ----------------------------------------------------------------------------
-// Resource-group-scoped resources: Storage, App Insights, Function App.
+// Resource-group-scoped resources: Storage, App Insights, Function App,
+// Connector Namespace + OneDrive for Business connection.
 // Uses the Flex Consumption (FC1) hosting plan.
 // ----------------------------------------------------------------------------
 
@@ -12,12 +13,13 @@ param environmentName string
 @minLength(1)
 param location string
 
+@description('Optional override for the Connector Namespace location. Connector Namespace is currently only available in a subset of regions, so we default to a known-good region rather than the function app location.')
+param connectorNamespaceLocation string = 'brazilsouth'
+
 param tags object = {}
 
-param connectorRuntimeUrl string = ''
-
-@secure()
-param connectorToken string = ''
+@description('Optional. AAD object id of a user (typically the deployer) to grant access to the connection so the same code can be debugged locally with `az login`.')
+param userPrincipalId string = ''
 
 @description('Maximum scale-out instance count for the Flex Consumption plan.')
 param maximumInstanceCount int = 100
@@ -30,12 +32,20 @@ param maximumInstanceCount int = 100
 ])
 param instanceMemoryMB int = 2048
 
+@description('Whether to create the storage role assignments needed for managed-identity AzureWebJobsStorage and Flex Consumption package deployment. Set to false when the deployer lacks Microsoft.Authorization/roleAssignments/write; in that case an admin must grant the function app MI "Storage Blob Data Owner" + "Storage Blob Data Contributor" on the storage account, or set useStorageManagedIdentity to false to fall back to a connection string.')
+param assignStorageRoles bool = true
+
+@description('When true, the function app uses managed identity for AzureWebJobsStorage and the Flex Consumption package container (requires assignStorageRoles or pre-existing role grants). When false, falls back to a storage account key connection string (works without RBAC permissions but stores a secret in app settings).')
+param useStorageManagedIdentity bool = true
+
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var storageAccountName = take('st${replace(resourceToken, '-', '')}', 24)
 var planName = 'plan-${environmentName}-${resourceToken}'
 var functionAppName = 'func-${environmentName}-${resourceToken}'
 var appInsightsName = 'appi-${environmentName}-${resourceToken}'
 var logAnalyticsName = 'log-${environmentName}-${resourceToken}'
+var connectorNamespaceName = 'cn${resourceToken}'
+var onedriveConnectionName = 'onedrive-${resourceToken}'
 var deploymentContainerName = 'app-package'
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
@@ -115,8 +125,11 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         storage: {
           type: 'blobContainer'
           value: '${storage.properties.primaryEndpoints.blob}${deploymentContainerName}'
-          authentication: {
+          authentication: useStorageManagedIdentity ? {
             type: 'SystemAssignedIdentity'
+          } : {
+            type: 'StorageAccountConnectionString'
+            storageAccountConnectionStringName: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
           }
         }
       }
@@ -132,24 +145,6 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
     siteConfig: {
       ftpsState: 'FtpsOnly'
       minTlsVersion: '1.2'
-      appSettings: [
-        {
-          name: 'AzureWebJobsStorage__accountName'
-          value: storage.name
-        }
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: appInsights.properties.ConnectionString
-        }
-        {
-          name: 'ConnectorRuntimeUrl'
-          value: connectorRuntimeUrl
-        }
-        {
-          name: 'ConnectorToken'
-          value: connectorToken
-        }
-      ]
     }
   }
   tags: union(tags, {
@@ -160,12 +155,44 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   ]
 }
 
-// Grant the function app's managed identity access to the storage account
-// (required for Flex Consumption deployment package and AzureWebJobsStorage identity-based auth).
+module connectorNamespace './connectorNamespace.bicep' = {
+  name: 'connectorNamespace-${connectorNamespaceName}'
+  params: {
+    name: connectorNamespaceName
+    location: connectorNamespaceLocation
+    tags: tags
+    onedriveConnectionName: onedriveConnectionName
+    functionAppPrincipalId: functionApp.identity.principalId
+    userPrincipalId: userPrincipalId
+  }
+}
+
+var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storage.listKeys().keys[0].value}'
+
+var baseAppSettings = {
+  APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
+  OneDriveConnection: connectorNamespace.outputs.onedriveConnectionRuntimeUrl
+}
+
+var identityStorageSettings = {
+  AzureWebJobsStorage__accountName: storage.name
+}
+
+var connectionStringStorageSettings = {
+  AzureWebJobsStorage: storageConnectionString
+  DEPLOYMENT_STORAGE_CONNECTION_STRING: storageConnectionString
+}
+
+resource functionAppSettings 'Microsoft.Web/sites/config@2024-04-01' = {
+  parent: functionApp
+  name: 'appsettings'
+  properties: union(baseAppSettings, useStorageManagedIdentity ? identityStorageSettings : connectionStringStorageSettings)
+}
+
 var storageBlobDataOwnerRoleId = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 
-resource storageBlobDataOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource storageBlobDataOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignStorageRoles) {
   scope: storage
   name: guid(storage.id, functionApp.id, storageBlobDataOwnerRoleId)
   properties: {
@@ -175,7 +202,7 @@ resource storageBlobDataOwner 'Microsoft.Authorization/roleAssignments@2022-04-0
   }
 }
 
-resource storageBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource storageBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignStorageRoles) {
   scope: storage
   name: guid(storage.id, functionApp.id, storageBlobDataContributorRoleId)
   properties: {
@@ -185,5 +212,21 @@ resource storageBlobDataContributor 'Microsoft.Authorization/roleAssignments@202
   }
 }
 
+// Grant the deployer (the principal running `azd up`) Storage Blob Data Contributor
+// so the `azd deploy` step can upload the package zip to the Flex Consumption
+// deployment container. Without this the upload fails with 403.
+resource deployerStorageBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignStorageRoles && !empty(userPrincipalId)) {
+  scope: storage
+  name: guid(storage.id, userPrincipalId, storageBlobDataContributorRoleId)
+  properties: {
+    principalId: userPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    principalType: 'User'
+  }
+}
+
 output functionAppName string = functionApp.name
 output functionAppHostname string = functionApp.properties.defaultHostName
+output connectorNamespaceName string = connectorNamespace.outputs.name
+output onedriveConnectionName string = connectorNamespace.outputs.onedriveConnectionName
+output onedriveConnectionRuntimeUrl string = connectorNamespace.outputs.onedriveConnectionRuntimeUrl
