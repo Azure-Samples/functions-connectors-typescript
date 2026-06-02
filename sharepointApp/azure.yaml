@@ -15,3 +15,12 @@ hooks:
         posix:
             shell: sh
             run: npm install && npm run build
+    postdeploy:
+        windows:
+            shell: pwsh
+            run: ./infra/scripts/postdeploy.ps1
+            interactive: true
+        posix:
+            shell: sh
+            run: ./infra/scripts/postdeploy.sh
+            interactive: true
