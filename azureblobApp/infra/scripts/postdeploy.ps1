@@ -21,6 +21,9 @@ $resourceGroupName        = $outputs.resourceGroupName
 $connectorNamespaceName   = $outputs.connectorNamespaceName
 $azureblobConnectionName  = $outputs.azureblobConnectionName
 $functionAppName          = $outputs.functionAppName
+$functionAppPrincipalId   = $outputs.functionAppPrincipalId
+$userPrincipalId          = $outputs.AZURE_PRINCIPAL_ID
+$tenantId                 = az account show --query tenantId -o tsv
 
 if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $azureblobConnectionName -or -not $functionAppName) {
     Write-Host "ERROR: required azd outputs missing. Run 'azd provision' first." -ForegroundColor Red
@@ -46,25 +49,24 @@ if (-not $extInstalled) {
 
 # --- Prompt for connection inputs ------------------------------------------
 Write-Host ""
-Write-Host "Configure the Azure Blob connection." -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host " Azure Blob connection setup" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  Reference: https://learn.microsoft.com/en-us/connectors/azureblob/" -ForegroundColor DarkGray
 Write-Host ""
 
-if ([Console]::IsInputRedirected) {
-    Write-Host "ERROR: postdeploy needs an interactive terminal to prompt for storage account / access key / container." -ForegroundColor Red
-    Write-Host "       Re-run interactively:  azd hooks run postdeploy" -ForegroundColor Red
-    exit 1
-}
-
 function Test-AccountInput {
     param([string] $Value)
-    $v = $Value.Trim()
-    if ($v -match '^https?://') {
-        if ($v -notmatch '\.blob\.core\.windows\.net') {
-            Write-Host "WARNING: blob endpoint URL does not contain '.blob.core.windows.net' — typo? Got: $v" -ForegroundColor Yellow
-            $confirm = Read-Host "Use it anyway? [y/N]"
-            if ($confirm -notmatch '^[Yy]') { return $null }
-        }
+    $v = $Value.Trim().TrimEnd('/')
+    # If user gave a full URL, extract the bare account name (the connector's
+    # 'accountName' parameter expects the storage account name, not a URL).
+    if ($v -match '^https?://([a-z0-9]{3,24})\.blob\.core\.windows\.net$') {
+        $v = $Matches[1]
+        Write-Host "   (using storage account name '$v' extracted from URL)" -ForegroundColor DarkGray
+    } elseif ($v -match '^https?://') {
+        Write-Host "WARNING: blob endpoint URL does not match 'https://<account>.blob.core.windows.net' — typo? Got: $v" -ForegroundColor Yellow
+        $confirm = Read-Host "Use it anyway? [y/N]"
+        if ($confirm -notmatch '^[Yy]') { return $null }
     } elseif ($v -notmatch '^[a-z0-9]{3,24}$') {
         Write-Host "WARNING: '$v' does not look like a valid storage account name (3-24 lowercase alphanumeric)." -ForegroundColor Yellow
         $confirm = Read-Host "Use it anyway? [y/N]"
@@ -166,20 +168,42 @@ function Wait-ConnectionConnected {
 }
 
 function Show-ConnectionError {
-    $detailJson = az connector-namespace connection show `
-        -g $resourceGroupName --namespace $connectorNamespaceName `
-        -n $azureblobConnectionName --query "properties.statuses" -o json 2>$null
-    if ($detailJson) {
-        try {
-            $statuses = $detailJson | ConvertFrom-Json
-            foreach ($st in @($statuses)) {
-                if ($st.error -and $st.error.message) {
-                    Write-Host "   detail: $($st.error.code): $($st.error.message)" -ForegroundColor Red
-                } elseif ($st.status) {
-                    Write-Host "   detail: status=$($st.status)" -ForegroundColor Red
-                }
-            }
-        } catch { }
+    $url = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Web/connectorGateways/$connectorNamespaceName/connections/${azureblobConnectionName}?api-version=2026-05-01-preview"
+    $raw = az rest --method get --url $url -o json 2>$null
+    if (-not $raw) {
+        Write-Host "   (failed to fetch connection resource for diagnostics)" -ForegroundColor DarkRed
+        return
+    }
+    try {
+        $conn = $raw | ConvertFrom-Json
+    } catch {
+        Write-Host "   (failed to parse connection JSON)" -ForegroundColor DarkRed
+        return
+    }
+
+    $printed = $false
+    if ($conn.properties.error) {
+        Write-Host ("   detail: {0}: {1}" -f $conn.properties.error.code, $conn.properties.error.message) -ForegroundColor Red
+        $printed = $true
+    }
+    foreach ($st in @($conn.properties.statuses)) {
+        if ($null -eq $st) { continue }
+        if ($st.error) {
+            Write-Host ("   detail: {0}: {1}" -f $st.error.code, $st.error.message) -ForegroundColor Red
+            $printed = $true
+        } elseif ($st.statusReason) {
+            Write-Host ("   detail: {0}" -f $st.statusReason) -ForegroundColor Red
+            $printed = $true
+        } elseif ($st.status -and $st.status -ne 'Error') {
+            Write-Host ("   detail: status={0}" -f $st.status) -ForegroundColor Red
+            $printed = $true
+        }
+    }
+    if (-not $printed) {
+        Write-Host "   (connector did not return a structured error — full properties below)" -ForegroundColor DarkYellow
+        ($conn.properties | ConvertTo-Json -Depth 10) -split "`n" | ForEach-Object {
+            Write-Host "     $_" -ForegroundColor DarkGray
+        }
     }
 }
 
@@ -223,6 +247,50 @@ for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
 # Persist non-secret values for next run (only after Connected).
 azd env set BLOB_ACCOUNT   $accountInput  | Out-Null
 azd env set BLOB_CONTAINER $containerInput | Out-Null
+
+# --- Create connection access policies --------------------------------------
+function Set-ConnectionAccessPolicy {
+    param(
+        [Parameter(Mandatory)] [string] $PolicyName,
+        [Parameter(Mandatory)] [string] $ObjectId
+    )
+    $url = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Web/connectorGateways/$connectorNamespaceName/connections/$azureblobConnectionName/accessPolicies/${PolicyName}?api-version=2026-05-01-preview"
+    $body = @{
+        properties = @{
+            principal = @{
+                type     = 'ActiveDirectory'
+                identity = @{ objectId = $ObjectId; tenantId = $tenantId }
+            }
+        }
+    } | ConvertTo-Json -Depth 10 -Compress
+    $bodyFile = Join-Path ([System.IO.Path]::GetTempPath()) ("ap-" + [guid]::NewGuid().ToString() + ".json")
+    Set-Content -Path $bodyFile -Value $body -Encoding utf8
+    try {
+        az rest --method put --url $url --body "@$bodyFile" -o none 2>$null
+    } finally {
+        Remove-Item $bodyFile -ErrorAction SilentlyContinue
+    }
+}
+
+if ($functionAppPrincipalId) {
+    Write-Host "-> Granting function-app managed identity access to the connection..." -ForegroundColor Cyan
+    Set-ConnectionAccessPolicy -PolicyName 'functionapp-msi' -ObjectId $functionAppPrincipalId | Out-Null
+}
+if ($userPrincipalId) {
+    Write-Host "-> Granting deployer user access to the connection..." -ForegroundColor Cyan
+    Set-ConnectionAccessPolicy -PolicyName 'dev-user' -ObjectId $userPrincipalId | Out-Null
+}
+
+# --- Wire AzureBlobConnection app setting -----------------------------------
+$connRuntimeUrl = az rest --method get `
+    --url "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Web/connectorGateways/$connectorNamespaceName/connections/${azureblobConnectionName}?api-version=2026-05-01-preview" `
+    --query "properties.connectionRuntimeUrl" -o tsv 2>$null
+if ($connRuntimeUrl) {
+    Write-Host "-> Setting AzureBlobConnection app setting on $functionAppName..." -ForegroundColor Cyan
+    az functionapp config appsettings set -g $resourceGroupName -n $functionAppName --settings "AzureBlobConnection=$connRuntimeUrl" -o none
+} else {
+    Write-Host "WARNING: could not fetch connection runtime URL — AzureBlobConnection app setting not updated." -ForegroundColor Yellow
+}
 
 # --- Compute folderId for the trigger --------------------------------------
 # The azureblob connector encodes the container path as base64 of the

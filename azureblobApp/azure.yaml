@@ -7,15 +7,16 @@ services:
         project: .
         language: ts
         host: function
+        hooks:
+            prepackage:
+                windows:
+                    shell: pwsh
+                    run: npm install; npm run build
+                posix:
+                    shell: sh
+                    run: npm install && npm run build
 hooks:
-    prepackage:
-        windows:
-            shell: pwsh
-            run: npm install; npm run build
-        posix:
-            shell: sh
-            run: npm install && npm run build
-    postdeploy:
+    postup:
         windows:
             shell: pwsh
             run: ./infra/scripts/postdeploy.ps1

@@ -58,4 +58,5 @@ output FUNCTION_APP_HOSTNAME string = resources.outputs.functionAppHostname
 output functionAppName string = resources.outputs.functionAppName
 output connectorNamespaceName string = resources.outputs.connectorNamespaceName
 output azureblobConnectionName string = resources.outputs.azureblobConnectionName
-output azureblobConnectionRuntimeUrl string = resources.outputs.azureblobConnectionRuntimeUrl
+output functionAppPrincipalId string = resources.outputs.functionAppPrincipalId
+output AZURE_PRINCIPAL_ID string = userPrincipalId

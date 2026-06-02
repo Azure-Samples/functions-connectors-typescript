@@ -69,7 +69,7 @@ The Bash script requires `jq`. The PowerShell script requires PowerShell 7+ (`pw
 To re-run only the post-deployment configuration without redeploying code:
 
 ```sh
-azd hooks run postdeploy
+azd hooks run postup
 ```
 
 The connector trigger requires the **Preview** Functions Extension Bundle
@@ -92,7 +92,7 @@ You should see:
 ![Connector Namespace overview showing connection and trigger](./docs/connectors-namespace-overview-blob.png)
 
 If the trigger is not listed or the connection shows as `Unauthenticated`,
-re-run `azd hooks run postdeploy` and re-enter the storage account / access
+re-run `azd hooks run postup` and re-enter the storage account / access
 key when prompted.
 
 ## Project layout
