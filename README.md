@@ -90,6 +90,8 @@ Demonstrates the lower-level generic API that works for any Azure Logic Apps con
 
 The first-class `connectors.<name>.<trigger>()` helpers are preferred when available because they add named context fields on top of `items`; `genericApp` is the escape hatch when that wrapper does not exist.
 
+> **Note:** `azd up` for `genericApp` only provisions the Functions App and its Connector Namespace — it does **not** create or authorize the underlying connections. After deploy, navigate to [connectors.azure.com](https://connectors.azure.com) to create and manage the connections referenced by each generic trigger.
+
 ## How a trigger function looks
 
 ### Preferred: first-class `connectors` namespace
