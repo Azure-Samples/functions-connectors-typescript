@@ -17,12 +17,16 @@ param environmentName string
 @description('Primary location for all resources.')
 param location string
 
-@description('Connector runtime URL (e.g. https://<connection-name>-<gateway>.azureconnectors.com). Optional at provisioning time; configure later as app setting.')
-param connectorRuntimeUrl string = ''
+@description('Optional. Region for the Connector Namespace. Defaults to brazilsouth (currently the only region with the required preview features).')
+param connectorNamespaceLocation string = 'brazilsouth'
 
-@description('Connector OAuth access token. Optional at provisioning time; configure later as app setting or rotate via Key Vault.')
-@secure()
-param connectorToken string = ''
+@description('Optional. AAD object id of a user (typically the deployer) to grant access to the connector connection so the same code can be debugged locally with `az login` credentials.')
+@metadata({
+  azd: {
+    type: 'principalId'
+  }
+})
+param userPrincipalId string = deployer().objectId
 
 var tags = {
   'azd-env-name': environmentName
@@ -41,12 +45,17 @@ module resources 'resources.bicep' = {
     location: location
     environmentName: environmentName
     tags: tags
-    connectorRuntimeUrl: connectorRuntimeUrl
-    connectorToken: connectorToken
+    connectorNamespaceLocation: connectorNamespaceLocation
+    userPrincipalId: userPrincipalId
   }
 }
 
 output AZURE_LOCATION string = location
 output AZURE_RESOURCE_GROUP string = resourceGroup.name
+output resourceGroupName string = resourceGroup.name
 output FUNCTION_APP_NAME string = resources.outputs.functionAppName
 output FUNCTION_APP_HOSTNAME string = resources.outputs.functionAppHostname
+output functionAppName string = resources.outputs.functionAppName
+output connectorNamespaceName string = resources.outputs.connectorNamespaceName
+output azureblobConnectionName string = resources.outputs.azureblobConnectionName
+output azureblobConnectionRuntimeUrl string = resources.outputs.azureblobConnectionRuntimeUrl
