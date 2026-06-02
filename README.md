@@ -16,19 +16,18 @@ The connector platform handles webhook registration, OAuth flows, token refresh,
 
 ## Getting-started samples
 
-Seven self-contained Azure Functions apps, each deployable with `azd up`:
+Six self-contained Azure Functions apps, each deployable with `azd up`:
 
 | App | Connector | Triggers demonstrated |
 |---|---|---|
 | [`azureblobApp/`](./azureblobApp) | Azure Blob | `onUpdatedFile` |
-| [`kustoApp/`](./kustoApp) | Azure Data Explorer (Kusto) | `onQueryResult` |
 | [`office365App/`](./office365App) | Office 365 Outlook | `onNewEmail`, `onFlaggedEmail`, `onNewMentionMeEmail`, `onNewCalendarEvent`, `onUpcomingEvent` |
 | [`onedriveApp/`](./onedriveApp) | OneDrive for Business | `onNewFile`, `onUpdatedFile` |
 | [`sharepointApp/`](./sharepointApp) | SharePoint Online | `onNewFile`, `onUpdatedFile` |
 | [`teamsApp/`](./teamsApp) | Microsoft Teams | `onNewChannelMessage`, `onNewChannelMessageMentioningMe`, `onGroupMembershipAdd`, `onGroupMembershipRemoval` |
 | [`genericApp/`](./genericApp) | _any connector_ — uses the generic `connectorTrigger<TItem>` API | Azure Blob, Office 365, SharePoint, Teams + a custom-type example |
 
-**Coverage:** every first-class trigger registration shipped by [`@azure/functions-extensions-connectors@0.0.2-preview`](https://www.npmjs.com/package/@azure/functions-extensions-connectors) (15 across six connectors) is demonstrated by at least one sample function.
+**Coverage:** every first-class trigger registration shipped by [`@azure/functions-extensions-connectors@0.0.2-preview`](https://www.npmjs.com/package/@azure/functions-extensions-connectors) (14 across five connectors) is demonstrated by at least one sample function.
 
 ## The packages these samples use
 
@@ -43,10 +42,6 @@ Seven self-contained Azure Functions apps, each deployable with `azd up`:
 ### `azureblobApp` — Azure Blob
 
 A single function `OnAzureBlobUpdatedFile` that fires when blobs in a watched Azure Blob container are updated. `context.files` is typed as `AzureBlobMetadata[]` — read `Name`, `Path`, `Size`, `LastModified` with full IntelliSense.
-
-### `kustoApp` — Azure Data Explorer (Kusto)
-
-`OnKustoQueryResult` runs whenever the configured Kusto query produces a non-empty result. Each row arrives as a `KustoRow` (record-of-unknown) under `context.rows`.
 
 ### `office365App` — Office 365 Outlook
 
@@ -198,7 +193,6 @@ functions-connectors-typescript/
 ├── .gitignore
 ├── .scaffold/                  # shared template (host.json, tsconfig, infra/, src/index.ts)
 ├── azureblobApp/
-├── kustoApp/
 ├── office365App/
 ├── onedriveApp/
 ├── sharepointApp/
