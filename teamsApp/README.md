@@ -81,7 +81,7 @@ The connector trigger requires the **Preview** Functions Extension Bundle
 
 After `azd up` finishes, open the **Connector Namespaces** portal to verify
 the resource was provisioned and that all four triggers are wired to a
-`Connected` Teams connection:
+`Connected` Microsoft Teams connection:
 
 [Connectors — Connector Namespaces](https://connectors.azure.com/)
 
@@ -90,6 +90,8 @@ You should see:
 - One **Connection** (Microsoft Teams) with status **Connected**
 - Four **Triggers** (one per function), each in **Enabled** state and bound
   to the connection above
+
+![Connector Namespace overview showing connection and triggers](./docs/connectors-namespace-overview-teams.png)
 
 If a trigger is not listed or the connection shows as `Unauthenticated`,
 re-run `azd hooks run postdeploy` and complete the consent flow when prompted.
