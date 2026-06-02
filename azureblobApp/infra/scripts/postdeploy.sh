@@ -31,6 +31,9 @@ connectorNamespaceName=$(echo "$outputs"   | jq -r '.connectorNamespaceName')
 azureblobConnectionName=$(echo "$outputs"  | jq -r '.azureblobConnectionName')
 functionAppName=$(echo "$outputs"          | jq -r '.functionAppName')
 azureLocation=$(echo "$outputs"            | jq -r '.AZURE_LOCATION')
+functionAppPrincipalId=$(echo "$outputs"   | jq -r '.functionAppPrincipalId // empty')
+userPrincipalId=$(echo "$outputs"          | jq -r '.AZURE_PRINCIPAL_ID // empty')
+tenantId=$(az account show --query tenantId -o tsv)
 
 if [[ -z "$resourceGroupName" || -z "$connectorNamespaceName" || -z "$azureblobConnectionName" || -z "$functionAppName" ]]; then
     echo -e "${RED}ERROR: required azd outputs missing. Run 'azd provision' first.${NC}"
@@ -55,26 +58,24 @@ fi
 
 # --- Prompt for connection inputs ------------------------------------------
 echo ""
-echo -e "${CYAN}Configure the Azure Blob connection.${NC}"
+echo -e "${CYAN}============================================================${NC}"
+echo -e "${CYAN} Azure Blob connection setup${NC}"
+echo -e "${CYAN}============================================================${NC}"
 echo -e "  Reference: https://learn.microsoft.com/en-us/connectors/azureblob/"
 echo ""
-
-if [[ ! -t 0 ]]; then
-    echo -e "${RED}ERROR: postdeploy needs an interactive terminal to prompt for storage account / access key / container.${NC}"
-    echo -e "${RED}       Re-run interactively:  azd hooks run postdeploy${NC}"
-    exit 1
-fi
 
 validate_account_input() {
     # echo back the value if accepted (or after y/N override), empty if rejected.
     local v="$1"
-    if [[ "$v" =~ ^https?:// ]]; then
-        if [[ "$v" != *".blob.core.windows.net"* ]]; then
-            echo -e "${YELLOW}WARNING: blob endpoint URL does not contain '.blob.core.windows.net' — typo? Got: $v${NC}" >&2
-            local ok=""
-            read -r -p "Use it anyway? [y/N]: " ok
-            [[ "$ok" =~ ^[Yy] ]] || { printf ''; return; }
-        fi
+    v="${v%/}"  # strip trailing slash
+    if [[ "$v" =~ ^https?://([a-z0-9]{3,24})\.blob\.core\.windows\.net$ ]]; then
+        v="${BASH_REMATCH[1]}"
+        echo -e "${NC}   (using storage account name '$v' extracted from URL)${NC}" >&2
+    elif [[ "$v" =~ ^https?:// ]]; then
+        echo -e "${YELLOW}WARNING: blob endpoint URL does not match 'https://<account>.blob.core.windows.net' — typo? Got: $v${NC}" >&2
+        local ok=""
+        read -r -p "Use it anyway? [y/N]: " ok
+        [[ "$ok" =~ ^[Yy] ]] || { printf ''; return; }
     elif ! [[ "$v" =~ ^[a-z0-9]{3,24}$ ]]; then
         echo -e "${YELLOW}WARNING: '$v' does not look like a valid storage account name (3-24 lowercase alphanumeric).${NC}" >&2
         local ok=""
@@ -175,12 +176,29 @@ wait_connection_status() {
 }
 
 show_connection_error() {
-    local detail
-    detail=$(az connector-namespace connection show \
-        -g "$resourceGroupName" --namespace "$connectorNamespaceName" \
-        -n "$azureblobConnectionName" --query "properties.statuses" -o json 2>/dev/null || echo "")
-    if [[ -n "$detail" && "$detail" != "null" ]]; then
-        echo "$detail" | jq -r '.[]? | if .error then "   detail: \(.error.code // ""): \(.error.message // "")" else "   detail: status=\(.status // "")" end' >&2
+    local url="https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Web/connectorGateways/${connectorNamespaceName}/connections/${azureblobConnectionName}?api-version=2026-05-01-preview"
+    local raw
+    raw=$(az rest --method get --url "$url" -o json 2>/dev/null || echo "")
+    if [[ -z "$raw" ]]; then
+        echo -e "${RED}   (failed to fetch connection resource for diagnostics)${NC}" >&2
+        return
+    fi
+    local printed=0
+    local err
+    err=$(echo "$raw" | jq -r '.properties.error // empty | "   detail: \(.code // ""): \(.message // "")"' 2>/dev/null)
+    if [[ -n "$err" ]]; then
+        echo -e "${RED}${err}${NC}" >&2
+        printed=1
+    fi
+    local stErrs
+    stErrs=$(echo "$raw" | jq -r '.properties.statuses[]? | if .error then "   detail: \(.error.code // ""): \(.error.message // "")" elif .statusReason then "   detail: \(.statusReason)" elif (.status and .status != "Error") then "   detail: status=\(.status)" else empty end' 2>/dev/null)
+    if [[ -n "$stErrs" ]]; then
+        echo -e "${RED}${stErrs}${NC}" >&2
+        printed=1
+    fi
+    if [[ $printed -eq 0 ]]; then
+        echo -e "${YELLOW}   (connector did not return a structured error — full properties below)${NC}" >&2
+        echo "$raw" | jq '.properties' | sed 's/^/     /' >&2
     fi
 }
 
@@ -224,6 +242,39 @@ done
 # Persist non-secret values for next run (only after Connected).
 azd env set BLOB_ACCOUNT   "$accountInput"   >/dev/null
 azd env set BLOB_CONTAINER "$containerInput" >/dev/null
+
+# --- Create connection access policies --------------------------------------
+set_connection_access_policy() {
+    local policyName="$1" objectId="$2"
+    local url="https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Web/connectorGateways/${connectorNamespaceName}/connections/${azureblobConnectionName}/accessPolicies/${policyName}?api-version=2026-05-01-preview"
+    local bodyFile
+    bodyFile=$(mktemp --suffix=.json)
+    jq -nc --arg oid "$objectId" --arg tid "$tenantId" '{
+        properties: { principal: { type: "ActiveDirectory", identity: { objectId: $oid, tenantId: $tid } } }
+    }' > "$bodyFile"
+    az rest --method put --url "$url" --body "@$bodyFile" -o none 2>/dev/null || true
+    rm -f "$bodyFile"
+}
+
+if [[ -n "$functionAppPrincipalId" ]]; then
+    echo -e "${CYAN}-> Granting function-app managed identity access to the connection...${NC}"
+    set_connection_access_policy 'functionapp-msi' "$functionAppPrincipalId"
+fi
+if [[ -n "$userPrincipalId" ]]; then
+    echo -e "${CYAN}-> Granting deployer user access to the connection...${NC}"
+    set_connection_access_policy 'dev-user' "$userPrincipalId"
+fi
+
+# --- Wire AzureBlobConnection app setting -----------------------------------
+connRuntimeUrl=$(az rest --method get \
+    --url "https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Web/connectorGateways/${connectorNamespaceName}/connections/${azureblobConnectionName}?api-version=2026-05-01-preview" \
+    --query "properties.connectionRuntimeUrl" -o tsv 2>/dev/null || echo "")
+if [[ -n "$connRuntimeUrl" ]]; then
+    echo -e "${CYAN}-> Setting AzureBlobConnection app setting on ${functionAppName}...${NC}"
+    az functionapp config appsettings set -g "$resourceGroupName" -n "$functionAppName" --settings "AzureBlobConnection=$connRuntimeUrl" -o none
+else
+    echo -e "${YELLOW}WARNING: could not fetch connection runtime URL — AzureBlobConnection app setting not updated.${NC}"
+fi
 
 # --- Compute folderId for the trigger --------------------------------------
 # The azureblob connector encodes the container path as base64 of the

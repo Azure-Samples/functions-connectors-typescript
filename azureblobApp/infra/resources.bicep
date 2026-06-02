@@ -152,9 +152,6 @@ module connectorNamespace './connectorNamespace.bicep' = {
     name: connectorNamespaceName
     location: connectorNamespaceLocation
     tags: tags
-    azureblobConnectionName: azureblobConnectionName
-    functionAppPrincipalId: functionApp.identity.principalId
-    userPrincipalId: userPrincipalId
   }
 }
 
@@ -164,7 +161,6 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2024-04-01' = {
   properties: {
     AzureWebJobsStorage__accountName: storage.name
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
-    AzureBlobConnection: connectorNamespace.outputs.azureblobConnectionRuntimeUrl
   }
 }
 
@@ -208,5 +204,5 @@ resource deployerStorageBlobDataContributor 'Microsoft.Authorization/roleAssignm
 output functionAppName string = functionApp.name
 output functionAppHostname string = functionApp.properties.defaultHostName
 output connectorNamespaceName string = connectorNamespace.outputs.name
-output azureblobConnectionName string = connectorNamespace.outputs.azureblobConnectionName
-output azureblobConnectionRuntimeUrl string = connectorNamespace.outputs.azureblobConnectionRuntimeUrl
+output azureblobConnectionName string = azureblobConnectionName
+output functionAppPrincipalId string = functionApp.identity.principalId
