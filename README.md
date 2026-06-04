@@ -150,7 +150,7 @@ The following connectors in `@azure/connectors@0.2.0-preview` expose **no trigge
 - An Azure subscription.
 - A configured AI Gateway connection for the connector you want to trigger on — see the [connection-setup guide](https://github.com/Azure/Connectors-NodeJS-SDK/blob/main/docs/connection-setup.md).
 
-> The connector trigger requires the **Experimental** Functions Extension Bundle (`Microsoft.Azure.Functions.ExtensionBundle.Experimental`, version `[4.6.*, 5.0.0)`) — already pre-configured in every sample's `host.json`.
+> The connector trigger requires the **Preview** Functions Extension Bundle (`Microsoft.Azure.Functions.ExtensionBundle.Preview`, version `[4.42.0, 5.0.0)`) — already pre-configured in every sample's `host.json`.
 
 ## Run a sample locally
 
@@ -214,7 +214,7 @@ Each app folder is self-contained:
 │   ├── resources.bicep         # Storage + App Insights + Function App
 │   └── main.parameters.json    # ${AZURE_ENV_NAME}, ${AZURE_LOCATION}, ${CONNECTOR_RUNTIME_URL=}, ${CONNECTOR_TOKEN=}
 ├── azure.yaml                  # azd service definition + prepackage hook
-├── host.json                   # Experimental extension bundle + logging
+├── host.json                   # Preview extension bundle + logging
 ├── local.settings.json         # placeholders for runtime URL + token
 ├── package.json
 ├── tsconfig.json
