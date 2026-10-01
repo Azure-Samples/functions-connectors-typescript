@@ -417,8 +417,16 @@ foreach ($t in $triggers) {
     }
 
     $triggerName = "$sharepointConnectionName-$($functionName.ToLower())"
-    $callbackUrl = "https://$functionAppName.azurewebsites.net/runtime/webhooks/connector?functionName=$functionName&code=$connectorExtensionKey"
-    $notificationDetails = (@{ callbackUrl = $callbackUrl; httpMethod = 'Post' } | ConvertTo-Json -Compress)
+    $callbackUrl = "https://$functionAppName.azurewebsites.net/runtime/webhooks/connector?functionName=$functionName"
+    $notificationDetails = (@{
+        callbackUrl = $callbackUrl
+        httpMethod = 'Post'
+        authentication = @{
+            type = "QueryString"
+            name = "code"
+            value = $connectorExtensionKey
+        }
+    } | ConvertTo-Json -Depth 3 -Compress)
 
     Write-Host ""
     Write-Host "Creating trigger '$triggerName' for $functionName ($operationName)..." -ForegroundColor Yellow
