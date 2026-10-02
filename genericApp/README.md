@@ -1,76 +1,68 @@
-# genericApp
+# Generic Connector Trigger Sample
 
-Azure Functions sample demonstrating the **generic `connectorTrigger<TItem>` API** from
-[`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors).
-
-Use the generic API when you want to:
-
-- Bind a trigger for a connector that does **not** have a first-class wrapper yet.
-- Define your own item shape (custom or partial types).
-- Bypass the typed `connectors.<connector>.<trigger>()` helpers entirely.
-
-> The function **name** still binds to the connector + operation on the host side. The
-> generic API only changes how the handler is declared in TypeScript — it does **not**
-> change which operation the function listens to.
-
-## Triggers included
+Azure Functions app demonstrating the generic `connectorTrigger<TItem>` API from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). Use it for connectors without a typed wrapper or when you want a custom or partial item type. Handlers are in [src/functions](src/functions/).
 
 | Function | Connector | Item type |
-|---|---|---|
-| `OnGenericAzureBlobUpdated` | Azure Blob | `AzureBlobMetadata` |
-| `OnGenericOffice365NewEmail` | Office 365 | `GraphClientReceiveMessage` |
+| -------- | --------- | --------- |
+| `OnGenericAzureBlobUpdated` | Azure Blob Storage | `AzureBlobMetadata` |
+| `OnGenericOffice365NewEmail` | Office 365 Outlook | `GraphClientReceiveMessage` |
 | `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` |
-| `OnGenericTeamsChannelMessage` | Teams | `ChatMessage` |
-| `OnGenericCustomConnectorEvent` | _any custom connector_ | inline `CustomConnectorItem` |
+| `OnGenericTeamsChannelMessage` | Microsoft Teams | `ChatMessage` |
+| `OnGenericCustomConnectorEvent` | Custom connector | Inline `CustomConnectorItem` |
 
-Each handler receives a `ConnectorTriggerContext<TItem>`:
-
-- `context.items` — the typed item array (`TItem[]`).
-- `context.payload` — the full envelope `{ body: { value: TItem[] } }`.
-- `context.rawPayload` — the original payload object.
-- `context.toJSON()` — serialised payload (useful for output bindings).
-
-## When to use this vs. the first-class API
+## Choosing the API
 
 | Use case | API |
-|---|---|
-| Connector wrapped in `connectors.<x>.<y>()` (e.g. SharePoint, Teams) | `connectors.<connector>.<trigger>()` (preferred — named context fields like `files`, `messages`) |
-| Connector without a first-class wrapper | `connectorTrigger<TItem>(...)` (this sample) |
-| Custom payload type / partial type | `connectorTrigger<MyType>(...)` (this sample) |
+| -------- | --- |
+| Connector with a typed wrapper and named context fields such as `emails`, `files`, or `messages` | `connectors.<connector>.<trigger>()` |
+| Connector without a wrapper, or a custom item type | `connectorTrigger<TItem>(...)` |
+
+Each handler receives a `ConnectorTriggerContext<TItem>` with `items`, the normalized `payload`, the original `rawPayload`, and `toJSON()`. The generic API changes the TypeScript handler declaration, not the connector operation. A separate trigger configuration must route the desired operation to the exact registered function name.
+
+## Prerequisites
+
+Follow the [shared prerequisites](../README.md#prerequisites). To receive real events, you also need a Connector Namespace, a configured connection, and a trigger configuration for each example you want to run.
+
+## Deploy to Azure
+
+Run from `genericApp`:
+
+```sh
+az login
+azd auth login
+azd up
+```
+
+The deployment builds the TypeScript app and provisions a Flex Consumption Function App, Storage account, Application Insights, and Log Analytics workspace. The Preview Functions Extension Bundle is already configured in [host.json](host.json).
+
+**This sample does not provision a Connector Namespace, connections, or trigger configurations.** Start with a [connector-specific sample](../README.md#samples) for an automated deployment, or configure these resources separately for this app.
+
+## Connector configuration
+
+Use the [operation mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md) to choose the operation and parameters. Route its trigger configuration to:
+
+```text
+https://<functions-host>/runtime/webhooks/connector?functionName=<registered-function-name>
+```
+
+Keep the connector extension key in `notificationDetails.authentication` with type `QueryString` and name `code`, rather than embedding it in the callback URL. The connector-specific samples' deployment scripts show the complete payload.
+
+## Verify
+
+Confirm the selected connection is `Connected` and its trigger is `Enabled` in [Connector Namespaces](https://connectors.azure.com/). Check that the callback targets the matching function name in the table above, then generate an event and inspect the Function App logs.
 
 ## Run locally
 
-```bash
+Configure [local.settings.json](local.settings.json) for your environment without committing secrets. Start Azurite if using the default development storage setting:
+
+```sh
 npm install
 npm start
 ```
 
-Update `local.settings.json` with the runtime URL and token for each connection you want to trigger on.
+Starting the host does not create connector subscriptions. Local event delivery requires a reachable HTTPS callback and a separate trigger configuration targeting it.
 
-## Deploy to Azure
+## More
 
-```bash
-azd auth login
-azd up
-azd env set CONNECTOR_RUNTIME_URL '<your-connector-runtime-url>'
-azd env set CONNECTOR_TOKEN '<your-token>'
-azd provision
-```
-
-## Project layout
-
-```
-genericApp/
-├── src/
-│   ├── index.ts              # app.setup({ enableHttpStream: true })
-│   └── functions/            # one file per generic trigger
-├── infra/
-│   ├── main.bicep
-│   ├── resources.bicep
-│   └── main.parameters.json
-├── azure.yaml
-├── host.json
-├── local.settings.json
-├── package.json
-└── tsconfig.json
-```
+- [Connector trigger extension](https://github.com/Azure/azure-functions-connector-extension)
+- [All TypeScript samples](../README.md#samples)

@@ -1,105 +1,67 @@
-# office365App
+# Office 365 Outlook Connector Sample
 
-Azure Functions sample app demonstrating the **Office 365 Outlook** connector triggers from
-[`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors).
-
-## Triggers included
+Azure Functions app demonstrating typed Office 365 Outlook triggers from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). Handlers are in [src/functions](src/functions/).
 
 | Function | Connector operation | Description |
-| --- | --- | --- |
-| `onNewEmail` | `OnNewEmailV3` | Fires when a new email arrives in Inbox |
-| `onFlaggedEmail` | `OnFlaggedEmailV3` | Fires when an email is flagged |
-| `onNewMentionMeEmail` | `OnNewMentionMeEmailV3` | Fires when a new email mentioning you arrives |
-| `onNewCalendarEvent` | `CalendarGetOnNewItemsV3` | Fires when a new event is created in your calendar |
-| `onUpcomingEvent` | `OnUpcomingEventsV3` | Fires when an upcoming event is starting soon |
+| -------- | ------------------- | ----------- |
+| `OnNewEmail` | `OnNewEmailV3` | New email arrives in Inbox |
+| `OnFlaggedEmail` | `OnFlaggedEmailV3` | An email is flagged in Inbox |
+| `OnNewMentionMeEmail` | `OnNewMentionMeEmailV3` | New email mentioning you arrives in Inbox |
+| `OnNewCalendarEvent` | `CalendarGetOnNewItemsV3` | New event is created in Calendar |
+| `OnUpcomingEvent` | `OnUpcomingEventsV3` | Calendar event starts within 15 minutes |
+
+> These handlers log email and calendar metadata. Use a test account and avoid sensitive data.
+
+## Prerequisites
+
+Follow the [shared prerequisites](../README.md#prerequisites). You also need an Office 365 account with access to Outlook email and calendar, and permission to consent to the connector.
+
+## Deploy to Azure
+
+Run from `office365App`:
+
+```sh
+az login
+azd auth login
+azd up
+```
+
+The deployment builds the TypeScript app and runs the [postdeploy hook](azure.yaml). Complete the OAuth consent flow in your browser when prompted. The hook waits for the connection to become `Connected`, then creates five trigger configurations.
+
+## Resources provisioned
+
+- Flex Consumption Function App with a system-assigned managed identity.
+- Storage account, Application Insights, and Log Analytics workspace.
+- Connector Namespace and Office 365 Outlook connection.
+
+The Preview Functions Extension Bundle is already configured in [host.json](host.json).
+
+## Connector configuration
+
+The hook configures email triggers for `Inbox`, calendar triggers for `Calendar`, and a 15-minute look-ahead for upcoming events. To repeat connection consent and trigger setup without redeploying:
+
+```sh
+azd hooks run postdeploy
+```
+
+## Verify
+
+Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Office 365 Outlook connection in `Connected` state and five triggers in `Enabled` state. See the [example namespace overview](docs/connector-namespace-overview-office365.png).
+
+Send an email to the connected account or create a calendar event, then inspect the Function App logs in Application Insights. If the connection is unauthenticated or triggers are missing, rerun the hook and complete consent.
 
 ## Run locally
+
+Configure [local.settings.json](local.settings.json) for your environment and start Azurite if using the default development storage setting:
 
 ```sh
 npm install
 npm start
 ```
 
-Update `local.settings.json` with your connector runtime URL and access token before starting.
+This builds the app and starts the Functions host. Receiving connector events locally also requires a reachable HTTPS callback and a separate trigger configuration targeting it; `npm start` does not create subscriptions.
 
-## Deploy to Azure
+## More
 
-`azd up` will provision:
-
-- A Flex Consumption Function App (Node 20)
-- A Storage account, Application Insights, Log Analytics
-- A **Connector Namespace** (`Microsoft.Web/connectorGateways`) containing:
-  - An **Office 365 Outlook connection**
-  - Five **trigger configs**, one per Functions trigger above, each routed to
-    the corresponding function's connector webhook URL
-
-```sh
-azd auth login
-azd up
-```
-
-After provisioning, an `azd` postdeploy hook
-(`infra/scripts/postdeploy.ps1` / `.sh`) uses the
-[`connector-namespace`](https://github.com/Azure/Connectors) Azure CLI extension to:
-
-1. Ensure the Office 365 connection exists and grant your user access to it.
-2. Walk you through **OAuth consent** by opening the consent link in your
-   browser and polling until the connection flips to `Connected`.
-3. Create one **trigger config** per Functions trigger, each bound to the
-   Office 365 connection.
-
-The Bash script requires `jq`. The PowerShell script requires PowerShell 7+ (`pwsh`).
-
-> Connector Namespace currently requires the `brazilsouth` region (the only
-> region with the required preview features as of writing). Override via
-> `azd env set CONNECTOR_NAMESPACE_LOCATION <region>` if needed.
-
-To re-run only the post-deployment configuration without redeploying code:
-
-```sh
-azd hooks run postdeploy
-```
-
-The connector trigger requires the **Preview** Functions Extension Bundle
-(`Microsoft.Azure.Functions.ExtensionBundle.Preview`). This is already configured in `host.json`.
-
-## Verify the Connector Namespace, connection, and triggers
-
-After `azd up` finishes, open the **Connector Namespaces** portal to verify
-the resource was provisioned and that all five triggers are wired to a
-`Connected` Office 365 connection:
-
-[Connectors — Connector Namespaces](https://connectors.azure.com/)
-
-You should see:
-
-- One **Connection** (Office 365 Outlook) with status **Connected**
-- Five **Triggers** (one per function), each in **Enabled** state and bound
-  to the connection above
-
-![Connector Namespace overview showing connection and triggers](./docs/connector-namespace-overview-office365.png)
-
-If a trigger is not listed or the connection shows as `Unauthenticated`,
-re-run `azd hooks run postdeploy` and complete the consent flow when prompted.
-
-## Project layout
-
-```
-office365App/
-├── src/
-│   ├── index.ts              # app.setup({ enableHttpStream: true })
-│   └── functions/            # one file per trigger
-├── infra/
-│   ├── main.bicep            # azd entrypoint (subscription scope)
-│   ├── resources.bicep       # Storage + App Insights + Function App
-│   ├── connectorNamespace.bicep  # Connector Namespace + Office 365 connection
-│   ├── main.parameters.json
-│   └── scripts/
-│       ├── postdeploy.ps1    # Creates trigger configs + OAuth consent (Windows)
-│       └── postdeploy.sh     # Creates trigger configs + OAuth consent (Linux/macOS)
-├── azure.yaml
-├── host.json
-├── local.settings.json
-├── package.json
-└── tsconfig.json
-```
+- [Office 365 Outlook connector operations](https://learn.microsoft.com/connectors/office365/)
+- [All TypeScript samples](../README.md#samples)
