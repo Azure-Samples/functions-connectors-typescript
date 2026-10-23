@@ -306,8 +306,8 @@ for entry in "${triggers[@]}"; do
     IFS='|' read -r functionName operationName parameters <<< "$entry"
 
     triggerName="${azureblobConnectionName}-$(echo "$functionName" | tr '[:upper:]' '[:lower:]')"
-    callbackUrl="https://${functionAppName}.azurewebsites.net/runtime/webhooks/connector?functionName=${functionName}&code=${connectorExtensionKey}"
-    notificationDetails=$(jq -nc --arg url "$callbackUrl" '{callbackUrl:$url, httpMethod:"Post"}')
+    callbackUrl="https://${functionAppName}.azurewebsites.net/runtime/webhooks/connector?functionName=${functionName}"
+    notificationDetails=$(jq -nc --arg url "$callbackUrl" --arg key "$connectorExtensionKey" '{callbackUrl:$url, httpMethod:"Post", authentication:{type:"QueryString", name:"code", value:$key}}')
 
     echo ""
     echo -e "${YELLOW}Creating trigger '${triggerName}' for ${functionName} (${operationName})...${NC}"
