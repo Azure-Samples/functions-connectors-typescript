@@ -6,6 +6,7 @@
   "main": "dist/functions/*.js",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test ../tests/samples.test.mjs",
     "watch": "tsc -w",
     "prestart": "npm run build",
     "start": "func start"
@@ -14,7 +15,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@azure/connectors": "0.2.0-preview",
+    "@azure/connectors": "0.3.0",
     "@azure/functions": "^4.16.0",
     "@azure/functions-extensions-connectors": "0.0.2-preview"
   },

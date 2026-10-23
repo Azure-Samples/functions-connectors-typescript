@@ -19,7 +19,11 @@ Each folder is a self-contained Functions app with its own `azure.yaml`, infrast
 
 ## More triggers and operations
 
-See the [Operations to Azure Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md) for supported connector triggers and their TypeScript signatures. The [Azure Connectors Node.js SDK](https://github.com/Azure/Connectors-NodeJS-SDK) provides typed clients for calling connector actions.
+See the [Operations to Azure Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md) for supported connector triggers and their TypeScript signatures. The [Azure Connectors Node.js SDK](https://github.com/Azure/Connectors-NodeJS-SDK) provides typed clients for calling connector actions. These samples pin the SDK to [`@azure/connectors@0.3.0`](https://www.npmjs.com/package/@azure/connectors/v/0.3.0).
+
+## Tests
+
+Run `npm test` from a sample directory to build its TypeScript source and run the offline smoke tests. See [tests/README.md](tests/README.md) for coverage, running all six samples together, and the local SDK archive fallback.
 
 ## Prerequisites
 
