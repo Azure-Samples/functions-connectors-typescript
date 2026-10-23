@@ -35,7 +35,7 @@ Six self-contained Azure Functions apps, each deployable with `azd up`:
 |---|---|
 | [`@azure/functions`](https://www.npmjs.com/package/@azure/functions) | The Functions Node.js worker. Provides `app.connectorTrigger` and the broader bindings surface. |
 | [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors) | Strongly-typed binding layer on top of `app.connectorTrigger`. Exposes the `connectors.<name>.<trigger>()` namespace with normalised payloads and typed context (`files`, `emails`, `messages`, …). Used by all seven samples. |
-| [`@azure/connectors`](https://www.npmjs.com/package/@azure/connectors) | Generated TypeScript SDK for connector **actions** (`Office365Client`, `SharepointClient`, `TeamsClient`, …). Also the source of item types like `BlobMetadata`, `GraphClientReceiveMessage`, `ChatMessage`. Use directly to call connector operations from your handler. |
+| [`@azure/connectors@0.3.0`](https://www.npmjs.com/package/@azure/connectors/v/0.3.0) | Generated TypeScript SDK for connector **actions** (`Office365Client`, `SharepointClient`, `TeamsClient`, …). Also the source of item types like `BlobMetadata`, `GraphClientReceiveMessage`, `ChatMessage`. Use directly to call connector operations from your handler. |
 
 ## What each sample shows
 
@@ -131,7 +131,7 @@ connectorTrigger<AzureBlobMetadata>('OnGenericAzureBlobUpdated', {
 
 ## Connectors **not** sampled (action-only)
 
-The following connectors in `@azure/connectors@0.2.0-preview` expose **no trigger methods** and are intentionally omitted from the trigger samples. Consume them as action clients from your handler:
+The following action-only connectors are intentionally omitted from the trigger samples. Consume them as action clients from your handler:
 
 | Connector | What you'd use it for | How to consume |
 |---|---|---|
