@@ -245,6 +245,47 @@ $triggers = @(
     @{ functionName = 'OnSharepointUpdatedFile'; operationName = 'OnUpdatedFile'; parameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'folderId'; value = $sharepointFolderId }) }
 )
 
+$sharepointListId = $outputs.SHAREPOINT_LIST_ID
+$sharepointLibraryId = $outputs.SHAREPOINT_LIBRARY_ID
+$sharepointFormId = $outputs.SHAREPOINT_FORM_ID
+$sharepointDigestSchedule = $outputs.SHAREPOINT_DIGEST_SCHEDULE
+
+if ($sharepointListId) {
+    $listParameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'table'; value = $sharepointListId })
+    $triggers += @(
+        @{ functionName = 'OnSharepointChangedItems'; operationName = 'GetOnChangedItems'; parameters = $listParameters },
+        @{ functionName = 'OnSharepointDeletedItems'; operationName = 'GetOnDeletedItems'; parameters = $listParameters },
+        @{ functionName = 'OnSharepointNewItems'; operationName = 'GetOnNewItems'; parameters = $listParameters },
+        @{ functionName = 'OnSharepointUpdatedItems'; operationName = 'GetOnUpdatedItems'; parameters = $listParameters }
+    )
+} else {
+    Write-Host "WARNING: List item triggers are not configured. Set SHAREPOINT_LIST_ID with 'azd env set' and rerun this hook." -ForegroundColor Yellow
+}
+
+if ($sharepointLibraryId) {
+    $libraryParameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'table'; value = $sharepointLibraryId })
+    $triggers += @(
+        @{ functionName = 'OnSharepointDeletedFileItems'; operationName = 'GetOnDeletedFileItems'; parameters = $libraryParameters },
+        @{ functionName = 'OnSharepointNewFileItems'; operationName = 'GetOnNewFileItems'; parameters = $libraryParameters },
+        @{ functionName = 'OnSharepointUpdatedFileClassifiedTimes'; operationName = 'GetOnUpdatedFileClassifiedTimes'; parameters = $libraryParameters },
+        @{ functionName = 'OnSharepointUpdatedFileItems'; operationName = 'GetOnUpdatedFileItems'; parameters = $libraryParameters }
+    )
+} else {
+    Write-Host "WARNING: File property triggers are not configured. Set SHAREPOINT_LIBRARY_ID with 'azd env set' and rerun this hook." -ForegroundColor Yellow
+}
+
+if ($sharepointListId -and $sharepointFormId) {
+    $triggers += @{ functionName = 'OnSharepointNewItemsFromForm'; operationName = 'GetOnNewItemsFromForm'; parameters = $listParameters + @(@{ name = 'form'; value = $sharepointFormId }) }
+} else {
+    Write-Host "WARNING: Form trigger is not configured. Set SHAREPOINT_LIST_ID and SHAREPOINT_FORM_ID with 'azd env set' and rerun this hook." -ForegroundColor Yellow
+}
+
+if ($sharepointListId -and $sharepointDigestSchedule) {
+    $triggers += @{ functionName = 'OnSharepointRecurrenceDigest'; operationName = 'GetOnRecurrenceDigest'; parameters = $listParameters + @(@{ name = 'add'; value = $true }, @{ name = 'update'; value = $true }, @{ name = 'runSchedule'; value = $sharepointDigestSchedule }) }
+} else {
+    Write-Host "WARNING: Digest trigger is not configured. Set SHAREPOINT_LIST_ID and SHAREPOINT_DIGEST_SCHEDULE with 'azd env set' and rerun this hook." -ForegroundColor Yellow
+}
+
 # --- Authorize the SharePoint connection (OAuth consent) --------------------
 function Test-ConnectionExists {
     param([Parameter(Mandatory)] [string] $ConnectionName)

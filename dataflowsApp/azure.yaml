@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: dataflowsApp
+metadata:
+    template: functions-connectors-typescript@1.0.0
+services:
+    api:
+        project: .
+        language: ts
+        host: function
+hooks:
+    prepackage:
+        windows:
+            shell: pwsh
+            run: |
+                npm install
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                npm run build
+        posix:
+            shell: sh
+            run: npm install && npm run build

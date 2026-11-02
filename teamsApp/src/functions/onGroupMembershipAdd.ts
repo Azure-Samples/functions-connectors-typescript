@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 import { InvocationContext } from '@azure/functions';
-import { connectors, GroupMembershipTriggerContext } from '@azure/functions-extensions-connectors';
+import { connectors, TeamMemberTriggerContext } from '@azure/functions-extensions-connectors';
 
-connectors.teams.onGroupMembershipAdd('OnGroupMembershipAdd', {
-    handler: async (context: GroupMembershipTriggerContext, invocationContext: InvocationContext) => {
+connectors.teams.onTeamMemberAdded('OnGroupMembershipAdd', {
+    handler: async (context: TeamMemberTriggerContext, invocationContext: InvocationContext) => {
         invocationContext.log('OnGroupMembershipAdd trigger received.');
 
         // NOTE(swapnilnagar): context.members items are typed as Record<string, unknown>.

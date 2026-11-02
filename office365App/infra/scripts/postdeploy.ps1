@@ -46,11 +46,21 @@ if (-not $extInstalled) {
 # your scenario requires.
 $triggers = @(
     @{ functionName = 'OnNewEmail';          operationName = 'OnNewEmailV3';            parameters = @(@{ name = 'folderPath'; value = 'Inbox' }) },
-    @{ functionName = 'OnFlaggedEmail';      operationName = 'OnFlaggedEmailV3';        parameters = @(@{ name = 'folderPath'; value = 'Inbox' }) },
+    @{ functionName = 'OnFlaggedEmail';      operationName = 'OnFlaggedEmailV4';        parameters = @(@{ name = 'folderPath'; value = 'Inbox' }) },
     @{ functionName = 'OnNewMentionMeEmail'; operationName = 'OnNewMentionMeEmailV3';   parameters = @(@{ name = 'folderPath'; value = 'Inbox' }) },
     @{ functionName = 'OnNewCalendarEvent';  operationName = 'CalendarGetOnNewItemsV3'; parameters = @(@{ name = 'table'; value = 'Calendar' }) },
-    @{ functionName = 'OnUpcomingEvent';     operationName = 'OnUpcomingEventsV3';      parameters = @(@{ name = 'table'; value = 'Calendar' }, @{ name = 'lookAheadTimeInMinutes'; value = 15 }) }
+    @{ functionName = 'OnUpcomingEvent';     operationName = 'OnUpcomingEventsV3';      parameters = @(@{ name = 'table'; value = 'Calendar' }, @{ name = 'lookAheadTimeInMinutes'; value = 15 }) },
+    @{ functionName = 'OnCalendarNewItems';  operationName = 'CalendarGetOnNewItemsV3'; parameters = @(@{ name = 'table'; value = 'Calendar' }) },
+    @{ functionName = 'OnCalendarUpdatedItems'; operationName = 'CalendarGetOnUpdatedItemsV3'; parameters = @(@{ name = 'table'; value = 'Calendar' }) },
+    @{ functionName = 'OnCalendarChangedItems'; operationName = 'CalendarGetOnChangedItemsV3'; parameters = @(@{ name = 'table'; value = 'Calendar' }) }
 )
+
+$sharedMailboxAddress = $outputs.OFFICE365_SHARED_MAILBOX_ADDRESS
+if ($sharedMailboxAddress) {
+    $triggers += @{ functionName = 'OnSharedMailboxNewEmail'; operationName = 'SharedMailboxOnNewEmailV2'; parameters = @(@{ name = 'mailboxAddress'; value = $sharedMailboxAddress }, @{ name = 'folderId'; value = 'Inbox' }) }
+} else {
+    Write-Host "WARNING: Shared mailbox trigger is not configured. Set OFFICE365_SHARED_MAILBOX_ADDRESS with 'azd env set' and rerun this hook to enable it." -ForegroundColor Yellow
+}
 
 # --- Authorize the Office 365 connection (OAuth consent) --------------------
 # Portal authorization UX is not yet available for Connector Namespace

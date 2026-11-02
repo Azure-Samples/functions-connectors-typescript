@@ -11,48 +11,155 @@ import test from 'node:test';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const samples = {
     azureblobApp: ['OnAzureBlobUpdatedFile'],
+    dataflowsApp: ['OnDataflowRefreshComplete'],
     genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
-    office365App: ['OnFlaggedEmail', 'OnNewCalendarEvent', 'OnNewEmail', 'OnNewMentionMeEmail', 'OnUpcomingEvent'],
+    kustoApp: ['OnKustoQueryResult'],
+    office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewCalendarEvent', 'OnNewEmail', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
     onedriveApp: ['OnOneDriveNewFile', 'OnOneDriveUpdatedFile'],
-    sharepointApp: ['OnSharepointNewFile', 'OnSharepointUpdatedFile'],
+    plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
+    salesforceApp: ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
+    sharepointApp: [
+        'OnSharepointChangedItems', 'OnSharepointDeletedFileItems', 'OnSharepointDeletedItems',
+        'OnSharepointNewFile', 'OnSharepointNewFileItems', 'OnSharepointNewItems',
+        'OnSharepointNewItemsFromForm', 'OnSharepointRecurrenceDigest', 'OnSharepointUpdatedFile',
+        'OnSharepointUpdatedFileClassifiedTimes', 'OnSharepointUpdatedFileItems', 'OnSharepointUpdatedItems',
+    ],
     teamsApp: ['OnGroupMembershipAdd', 'OnGroupMembershipRemoval', 'OnNewChannelMessage', 'OnNewChannelMessageMentioningMe'],
+    vstsApp: [
+        'OnVstsBuildCompleted', 'OnVstsGitPullClosed', 'OnVstsGitPullCreated', 'OnVstsGitPush',
+        'OnVstsTfvcCheckIn', 'OnVstsWorkItemAssigned', 'OnVstsWorkItemClosed',
+        'OnVstsWorkItemCreated', 'OnVstsWorkItemUpdated',
+    ],
 };
+const connectorSamples = {
+    dataflowsApp: { namespace: 'dataflows', sdk: 'Dataflows' },
+    kustoApp: { namespace: 'kusto' },
+    office365App: { namespace: 'office365', sdk: 'Office365' },
+    onedriveApp: { namespace: 'onedriveforbusiness', sdk: 'Onedriveforbusiness' },
+    plannerApp: { namespace: 'planner', sdk: 'Planner' },
+    salesforceApp: { namespace: 'salesforce', sdk: 'Salesforce' },
+    sharepointApp: { namespace: 'sharepoint', sdk: 'Sharepointonline' },
+    teamsApp: { namespace: 'teams', sdk: 'Teams' },
+    vstsApp: { namespace: 'vsts', sdk: 'Visualstudioteamservices' },
+};
+const dependencies = {
+    '@azure/connectors': '0.3.1-preview',
+    '@azure/functions': '^4.17.0',
+    '@azure/functions-extensions-connectors': '0.1.0-preview',
+};
+const appsWithHooks = new Set(['office365App', 'onedriveApp', 'sharepointApp', 'teamsApp']);
+const publishedApis = new Set();
+const coveredApis = new Set();
 
-function itemFor(name, index) {
+function itemFor(appName, name, index) {
     const marker = `sample-item-${index}`;
     if (/Email|Calendar|Upcoming/.test(name)) {
-        return { id: marker, subject: marker, from: 'sender@example.com', importance: 'normal', hasAttachments: false, organizer: 'organizer@example.com', start: '2026-10-23T10:00:00Z', end: '2026-10-23T11:00:00Z' };
+        return { id: marker, subject: marker, from: 'sender@example.com', importance: 'normal', hasAttachments: false, organizer: 'organizer@example.com', start: '2026-10-23T10:00:00Z', end: '2026-10-23T11:00:00Z', ActionType: 'updated', IsUpdated: true };
     }
     if (/Message/.test(name)) {
         return { id: marker, from: { user: { displayName: marker } }, body: { content: marker } };
+    }
+    if (appName === 'dataflowsApp') {
+        return { dataflowId: marker, dataflowName: marker, status: 'Success', startTime: '2026-10-23T10:00:00Z', endTime: '2026-10-23T11:00:00Z' };
+    }
+    if (appName === 'kustoApp') {
+        return { Result: marker, Count: index };
+    }
+    if (appName === 'plannerApp') {
+        return { id: marker, title: marker, planId: 'test-plan', percentComplete: /Complete/.test(name) ? 100 : 0, _assignments: [{ userId: marker }] };
+    }
+    if (appName === 'sharepointApp' && /Deleted/.test(name)) {
+        return { ID: index, Name: marker, FileNameWithExtension: marker, TimeDeleted: '2026-10-23T10:00:00Z', DeletedByUserName: 'test-user' };
+    }
+    if (appName === 'salesforceApp' || (appName === 'sharepointApp' && !/File$/.test(name))) {
+        return { dynamicProperties: { record: { id: marker, title: marker } } };
+    }
+    if (appName === 'vstsApp') {
+        if (/Build/.test(name)) {
+            return { id: index, buildNumber: marker, status: 'completed', result: 'succeeded' };
+        }
+        if (/GitPull/.test(name)) {
+            return { pullRequestId: index, title: marker, sourceRefName: 'refs/heads/test', targetRefName: 'refs/heads/main' };
+        }
+        if (/GitPush/.test(name)) {
+            return { pushId: index, repository: { name: marker }, refUpdates: [{ name: 'refs/heads/test' }] };
+        }
+        if (/Tfvc/.test(name)) {
+            return { changesetId: index, comment: marker, author: { displayName: 'test-user' } };
+        }
+        return { id: index, rev: 1, fields: { 'System.Title': marker, 'System.State': 'Active' } };
     }
     return { id: marker, name: marker, Name: marker, Path: `/files/${marker}`, Size: 42, LastModified: '2026-10-23T10:00:00Z' };
 }
 
 // Running from an app via npm test selects that app. Running from the repository
-// root exercises all six apps, each with its own installed dependencies.
+// root exercises all eleven apps, each with its own installed dependencies.
 const cwd = path.resolve(process.cwd());
 const selected = Object.entries(samples).filter(([appName]) => cwd === path.resolve(root) || cwd === path.resolve(root, appName));
 assert.ok(selected.length, 'Run tests from the repository root or a sample app directory.');
+assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector extension requires Node.js 24+.');
 
 for (const [appName, expectedNames] of selected) {
     await test(appName, async (t) => {
         const appRoot = path.join(root, appName);
         const require = createRequire(path.join(appRoot, 'package.json'));
 
-        await t.test('installed connector SDK matches the requested version', async () => {
+        await t.test('manifests, lockfiles, and installed packages match the requested releases', async () => {
             const manifest = JSON.parse(await readFile(path.join(appRoot, 'package.json'), 'utf8'));
-            const sdk = JSON.parse(await readFile(path.join(appRoot, 'node_modules/@azure/connectors/package.json'), 'utf8'));
-            assert.equal(sdk.version, manifest.dependencies['@azure/connectors']);
+            const lock = JSON.parse(await readFile(path.join(appRoot, 'package-lock.json'), 'utf8'));
+            assert.equal(manifest.engines.node, '>=24.0.0');
+            for (const [name, version] of Object.entries(dependencies)) {
+                const installed = JSON.parse(await readFile(path.join(appRoot, 'node_modules', name, 'package.json'), 'utf8'));
+                assert.equal(manifest.dependencies[name], version);
+                assert.equal(lock.packages[''].dependencies[name], version);
+                assert.equal(lock.packages[`node_modules/${name}`].version, installed.version);
+                if (name === '@azure/functions') {
+                    assert.match(installed.version, /^4\.\d+\.\d+(?:\+[\w.-]+)?$/);
+                    assert.ok(Number(installed.version.split('.')[1]) >= 17);
+                } else {
+                    assert.equal(installed.version, version);
+                }
+            }
+            const extensionRequire = createRequire(require.resolve('@azure/functions-extensions-connectors'));
+            assert.equal(extensionRequire.resolve('@azure/connectors'), require.resolve('@azure/connectors'), 'The extension and app must share the requested SDK.');
             // Check both published runtime entry points, not just TypeScript types.
             assert.equal(typeof require('@azure/connectors').ConnectorError, 'function');
             const esm = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/azureConnectors/index.js')).href);
             assert.equal(typeof esm.ConnectorError, 'function');
         });
 
+        await t.test('host and deployment runtime configuration match the extension', async () => {
+            const host = JSON.parse(await readFile(path.join(appRoot, 'host.json'), 'utf8'));
+            assert.equal(host.version, '2.0');
+            assert.equal(host.extensionBundle.id, 'Microsoft.Azure.Functions.ExtensionBundle.Preview');
+            const runtimeApp = connectorSamples[appName] && !appsWithHooks.has(appName) ? 'genericApp' : appName;
+            const infrastructure = await readFile(path.join(root, runtimeApp, 'infra/resources.bicep'), 'utf8');
+            assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
+        });
+
         const { app } = require('@azure/functions');
+        const extensionManifest = JSON.parse(await readFile(path.join(appRoot, 'node_modules/@azure/functions-extensions-connectors/package.json'), 'utf8'));
+        const extension = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/functions-extensions-connectors', extensionManifest.module)).href);
         const original = app.connectorTrigger;
+        const originalNamespaces = new Map(Object.entries(extension.connectors));
         const registrations = new Map();
+        const apiCalls = new Map();
+        // Observe which public helpers the samples actually call; the helpers
+        // still execute their real normalization and named-context wrappers.
+        for (const [namespace, methods] of originalNamespaces) {
+            extension.connectors[namespace] = Object.fromEntries(Object.entries(methods).map(([method, register]) => {
+                if (typeof register !== 'function') {
+                    return [method, register];
+                }
+                const api = `${namespace}.${method}`;
+                publishedApis.add(api);
+                return [method, (name, options) => {
+                    apiCalls.set(name, api);
+                    coveredApis.add(api);
+                    return register(name, options);
+                }];
+            }));
+        }
         // Keep the real extension's normalization and named-context wrappers.
         // Replace only host registration; no Azure service or credentials are used.
         app.connectorTrigger = (name, options) => {
@@ -66,14 +173,56 @@ for (const [appName, expectedNames] of selected) {
             }
         } finally {
             app.connectorTrigger = original;
+            for (const [namespace, methods] of originalNamespaces) {
+                extension.connectors[namespace] = methods;
+            }
         }
 
         await t.test('all expected functions register', () => {
             assert.deepEqual([...registrations.keys()].sort(), [...expectedNames].sort());
         });
 
+        await t.test('every public helper for this connector is exercised', () => {
+            const connector = connectorSamples[appName];
+            const expected = connector
+                ? Object.entries(originalNamespaces.get(connector.namespace))
+                    .filter(([, register]) => typeof register === 'function')
+                    .map(([method]) => `${connector.namespace}.${method}`)
+                : [];
+            assert.deepEqual([...apiCalls.values()].sort(), expected.sort());
+            assert.equal(apiCalls.size, connector ? expectedNames.length : 0);
+        });
+
+        if (appsWithHooks.has(appName)) {
+            await t.test('both deployment hooks map functions to the SDK operation IDs', async () => {
+                const { sdk } = connectorSamples[appName];
+                const sdkModule = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/generated', `${sdk}Extensions.js`)).href);
+                const operations = sdkModule[`${sdk}TriggerOperations`];
+                for (const suffix of ['ps1', 'sh']) {
+                    const hook = await readFile(path.join(appRoot, 'infra/scripts', `postdeploy.${suffix}`), 'utf8');
+                    for (const [name, api] of apiCalls) {
+                        const method = api.split('.')[1];
+                        const key = method === 'onNewCalendarEvent' ? 'OnCalendarNewItems' : `O${method.slice(1)}`;
+                        const operation = operations[key];
+                        assert.equal(typeof operation, 'string', `Missing SDK operation for ${api}.`);
+                        const matches = suffix === 'ps1'
+                            ? new RegExp(`functionName = '${name}';\\s+operationName = '${operation}'`).test(hook)
+                            : hook.includes(`${name}|${operation}|`);
+                        assert.ok(matches, `${suffix} hook must route ${name} to ${operation}.`);
+                    }
+                    if (appName === 'onedriveApp') {
+                        assert.ok(hook.includes("connector-name 'onedriveforbusiness'"));
+                    }
+                }
+                if (appName === 'onedriveApp') {
+                    const namespace = await readFile(path.join(appRoot, 'infra/connectorNamespace.bicep'), 'utf8');
+                    assert.match(namespace, /connectorName:\s*'onedriveforbusiness'/);
+                }
+            });
+        }
+
         for (const [name, { handler }] of registrations) {
-            const items = [itemFor(name, 1), itemFor(name, 2)];
+            const items = [itemFor(appName, name, 1), itemFor(appName, name, 2)];
             const batch = { body: { value: items }, headers: { 'x-test': 'preserved' } };
             const single = { body: items[0] };
             const cases = [
@@ -87,6 +236,13 @@ for (const [appName, expectedNames] of selected) {
                 ['malformed JSON', '{invalid', '{invalid', 0],
             ];
 
+            if (appName === 'salesforceApp' || (appName === 'sharepointApp' && !/File$|Deleted/.test(name))) {
+                const flatItems = items.map((_, index) => ({ arbitraryField: `sample-item-${index + 1}` }));
+                const flatBatch = { body: { value: flatItems } };
+                const flatSingle = { body: flatItems[0] };
+                cases.push(['flat record batch', flatBatch, flatBatch, 2], ['flat record single', flatSingle, flatSingle, 1]);
+            }
+
             for (const [label, input, expected, count] of cases) {
                 await t.test(`${name}: ${label}`, async () => {
                     const logs = [];
@@ -99,13 +255,25 @@ for (const [appName, expectedNames] of selected) {
                     if (input && typeof input === 'object') {
                         assert.strictEqual(result, input);
                     }
+
                     assert.ok(logs.some((line) => line.includes(`${name} `)), 'The sample handler must run.');
                     for (let index = 1; index <= count; index++) {
                         assert.ok(logs.some((line) => line.includes(`sample-item-${index}`)), `Item ${index} must reach the handler.`);
+                    }
+                    if (name === 'OnCalendarChangedItems' && count > 0) {
+                        assert.ok(logs.some((line) => line.includes("Action: 'updated'")), 'Calendar changes must use the SDK ActionType field.');
                     }
                     assert.equal(warnings.length, label === 'malformed JSON' ? 1 : 0);
                 });
             }
         }
+    });
+}
+
+if (cwd === path.resolve(root)) {
+    await test('all 43 published typed registrations are covered across the sample apps', () => {
+        assert.equal(publishedApis.size, 43);
+        assert.deepEqual([...coveredApis].sort(), [...publishedApis].sort());
+        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 49);
     });
 }

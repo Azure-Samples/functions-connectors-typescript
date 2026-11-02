@@ -2,12 +2,14 @@
 
 Azure Functions app demonstrating typed Teams triggers from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). Handlers are in [src/functions](src/functions/).
 
-| Function | Connector operation | Description |
-| -------- | ------------------- | ----------- |
-| `OnNewChannelMessage` | `OnNewChannelMessage` | New root message is posted to a channel |
-| `OnNewChannelMessageMentioningMe` | `OnNewChannelMessageMentioningMe` | Channel message mentions the signed-in user |
-| `OnGroupMembershipAdd` | `OnGroupMembershipAdd` | Member is added to the team |
-| `OnGroupMembershipRemoval` | `OnGroupMembershipRemoval` | Member is removed from the team |
+| Function | Helper under `connectors.teams` | Connector operation |
+| -------- | ------------------------------ | ------------------- |
+| [OnNewChannelMessage](src/functions/onNewChannelMessage.ts) | `onNewChannelMessage` | `OnNewChannelMessage` |
+| [OnNewChannelMessageMentioningMe](src/functions/onNewChannelMessageMentioningMe.ts) | `onNewChannelMessageMentioningMe` | `OnNewChannelMessageMentioningMe` |
+| [OnGroupMembershipAdd](src/functions/onGroupMembershipAdd.ts) | `onTeamMemberAdded` | `OnGroupMembershipAdd` |
+| [OnGroupMembershipRemoval](src/functions/onGroupMembershipRemoval.ts) | `onTeamMemberRemoved` | `OnGroupMembershipRemoval` |
+
+These cover all four exported Teams helpers. Membership contexts are now `TeamMemberTriggerContext`; `members` remains `Record<string, unknown>[]`. Registered function names and remote operation IDs remain unchanged.
 
 ## Prerequisites
 

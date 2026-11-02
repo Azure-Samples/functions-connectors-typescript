@@ -4,7 +4,7 @@
 import { InvocationContext } from '@azure/functions';
 import { CalendarEventTriggerContext, connectors } from '@azure/functions-extensions-connectors';
 
-connectors.office365.onUpcomingEvent('OnUpcomingEvent', {
+connectors.office365.onUpcomingEvents('OnUpcomingEvent', {
     handler: async (context: CalendarEventTriggerContext, invocationContext: InvocationContext) => {
         invocationContext.log('OnUpcomingEvent trigger received.');
 

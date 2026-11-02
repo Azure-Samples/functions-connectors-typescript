@@ -50,56 +50,6 @@ if [[ -z "$extInstalled" ]]; then
     exit 2
 fi
 
-# --- Create Connector Namespace trigger configs -----------------------------
-echo ""
-echo -e "${CYAN}Fetching connector extension key for ${functionAppName}...${NC}"
-connectorExtensionKey=$(az functionapp keys list -g "${resourceGroupName}" -n "${functionAppName}" --query "systemKeys.connector_extension" -o tsv)
-if [[ -z "$connectorExtensionKey" ]]; then
-    echo -e "${RED}ERROR: could not fetch connector_extension system key from ${functionAppName}.${NC}"
-    exit 1
-fi
-
-connectionDetails=$(jq -nc --arg conn "${office365ConnectionName}" \
-    '{connectorName:"office365", connectionName:$conn}')
-
-# functionName | operationName | parameters JSON
-triggers=(
-    "OnNewEmail|OnNewEmailV3|[{\"name\":\"folderPath\",\"value\":\"Inbox\"}]"
-    "OnFlaggedEmail|OnFlaggedEmailV3|[{\"name\":\"folderPath\",\"value\":\"Inbox\"}]"
-    "OnNewMentionMeEmail|OnNewMentionMeEmail|[]"
-    "OnNewCalendarEvent|OnNewEventV3|[{\"name\":\"calendarId\",\"value\":\"Calendar\"}]"
-    "OnUpcomingEvent|OnUpcomingEvents|[{\"name\":\"calendarId\",\"value\":\"Calendar\"},{\"name\":\"lookAheadTimeInMinutes\",\"value\":15}]"
-)
-
-for entry in "${triggers[@]}"; do
-    IFS='|' read -r functionName operationName parameters <<< "$entry"
-
-    triggerName="${office365ConnectionName}-$(echo "$functionName" | tr '[:upper:]' '[:lower:]')"
-    callbackUrl="https://${functionAppName}.azurewebsites.net/runtime/webhooks/connector?functionName=${functionName}"
-    notificationDetails=$(jq -nc --arg url "${callbackUrl}" --arg key "${connectorExtensionKey}" '{callbackUrl:$url, httpMethod:"Post", authentication:{type:"QueryString", name:"code", value:$key}}')
-
-    echo ""
-    echo -e "${YELLOW}Creating trigger '${triggerName}' for ${functionName} (${operationName})...${NC}"
-
-    az connector-namespace trigger delete \
-        -g "${resourceGroupName}" --namespace "${connectorNamespaceName}" \
-        -n "${triggerName}" --yes 2>/dev/null || true
-
-    az connector-namespace trigger create \
-        -g "${resourceGroupName}" \
-        --namespace "${connectorNamespaceName}" \
-        -n "${triggerName}" \
-        --connection-details "${connectionDetails}" \
-        --operation-name "${operationName}" \
-        --parameters "${parameters}" \
-        --notification-details "${notificationDetails}" \
-        --state "Enabled" \
-        --description "Office 365 ${operationName} -> ${functionName}"
-done
-
-echo ""
-echo -e "${GREEN}✅ Connector Namespace trigger configs created successfully.${NC}"
-
 # --- Authorize the Office 365 connection (OAuth consent) --------------------
 echo ""
 echo -e "${YELLOW}Authorizing Office 365 connection via Azure CLI...${NC}"
@@ -137,8 +87,8 @@ authorize_connection() {
         --connection-name "${connectionName}" --parameters "${params}" -o json 2>/dev/null || echo "")
     link=$(echo "${consentJson}" | jq -r '.value[0].link // empty' 2>/dev/null || echo "")
     if [[ -z "${link}" ]]; then
-        echo -e "${RED}   list-consent-links returned no link; skipping${NC}"
-        return
+        echo -e "${RED}   ERROR: list-consent-links returned no link.${NC}" >&2
+        return 1
     fi
 
     echo -e "${CYAN}   opening browser for OAuth consent...${NC}"
@@ -163,10 +113,74 @@ authorize_connection() {
         fi
         sleep 3
     done
-    echo -e "${YELLOW}   timed out waiting for consent (5 min). Re-run azd up or this script when ready.${NC}"
+    echo -e "${RED}   ERROR: timed out waiting for consent (5 min). Re-run this hook when ready.${NC}" >&2
+    return 1
 }
 
-authorize_connection "${office365ConnectionName}" "Office 365 Outlook"
+if ! authorize_connection "${office365ConnectionName}" "Office 365 Outlook"; then
+    echo -e "${RED}ERROR: Office 365 connection is not Connected. Cannot create triggers.${NC}" >&2
+    exit 1
+fi
+
+# --- Create Connector Namespace trigger configs -----------------------------
+echo ""
+echo -e "${CYAN}Fetching connector extension key for ${functionAppName}...${NC}"
+connectorExtensionKey=$(az functionapp keys list -g "${resourceGroupName}" -n "${functionAppName}" --query "systemKeys.connector_extension" -o tsv)
+if [[ -z "$connectorExtensionKey" ]]; then
+    echo -e "${RED}ERROR: could not fetch connector_extension system key from ${functionAppName}.${NC}"
+    exit 1
+fi
+
+connectionDetails=$(jq -nc --arg conn "${office365ConnectionName}" \
+    '{connectorName:"office365", connectionName:$conn}')
+
+# functionName | operationName | parameters JSON
+triggers=(
+    "OnNewEmail|OnNewEmailV3|[{\"name\":\"folderPath\",\"value\":\"Inbox\"}]"
+    "OnFlaggedEmail|OnFlaggedEmailV4|[{\"name\":\"folderPath\",\"value\":\"Inbox\"}]"
+    "OnNewMentionMeEmail|OnNewMentionMeEmailV3|[{\"name\":\"folderPath\",\"value\":\"Inbox\"}]"
+    "OnNewCalendarEvent|CalendarGetOnNewItemsV3|[{\"name\":\"table\",\"value\":\"Calendar\"}]"
+    "OnUpcomingEvent|OnUpcomingEventsV3|[{\"name\":\"table\",\"value\":\"Calendar\"},{\"name\":\"lookAheadTimeInMinutes\",\"value\":15}]"
+    "OnCalendarNewItems|CalendarGetOnNewItemsV3|[{\"name\":\"table\",\"value\":\"Calendar\"}]"
+    "OnCalendarUpdatedItems|CalendarGetOnUpdatedItemsV3|[{\"name\":\"table\",\"value\":\"Calendar\"}]"
+    "OnCalendarChangedItems|CalendarGetOnChangedItemsV3|[{\"name\":\"table\",\"value\":\"Calendar\"}]"
+)
+
+sharedMailboxAddress=$(echo "$outputs" | jq -r '.OFFICE365_SHARED_MAILBOX_ADDRESS // empty')
+if [[ -n "$sharedMailboxAddress" ]]; then
+    triggers+=("OnSharedMailboxNewEmail|SharedMailboxOnNewEmailV2|$(jq -nc --arg m "$sharedMailboxAddress" '[{name:"mailboxAddress",value:$m},{name:"folderId",value:"Inbox"}]')")
+else
+    echo -e "${YELLOW}WARNING: Shared mailbox trigger is not configured. Set OFFICE365_SHARED_MAILBOX_ADDRESS with 'azd env set' and rerun this hook to enable it.${NC}" >&2
+fi
+
+for entry in "${triggers[@]}"; do
+    IFS='|' read -r functionName operationName parameters <<< "$entry"
+
+    triggerName="${office365ConnectionName}-$(echo "$functionName" | tr '[:upper:]' '[:lower:]')"
+    callbackUrl="https://${functionAppName}.azurewebsites.net/runtime/webhooks/connector?functionName=${functionName}"
+    notificationDetails=$(jq -nc --arg url "${callbackUrl}" --arg key "${connectorExtensionKey}" '{callbackUrl:$url, httpMethod:"Post", authentication:{type:"QueryString", name:"code", value:$key}}')
+
+    echo ""
+    echo -e "${YELLOW}Creating trigger '${triggerName}' for ${functionName} (${operationName})...${NC}"
+
+    az connector-namespace trigger delete \
+        -g "${resourceGroupName}" --namespace "${connectorNamespaceName}" \
+        -n "${triggerName}" --yes 2>/dev/null || true
+
+    az connector-namespace trigger create \
+        -g "${resourceGroupName}" \
+        --namespace "${connectorNamespaceName}" \
+        -n "${triggerName}" \
+        --connection-details "${connectionDetails}" \
+        --operation-name "${operationName}" \
+        --parameters "${parameters}" \
+        --notification-details "${notificationDetails}" \
+        --state "Enabled" \
+        --description "Office 365 ${operationName} -> ${functionName}"
+done
+
+echo ""
+echo -e "${GREEN}✅ Connector Namespace trigger configs created successfully.${NC}"
 
 echo ""
 echo -e "${GREEN}✅ Post-deployment configuration complete.${NC}"

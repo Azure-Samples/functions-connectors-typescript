@@ -385,6 +385,47 @@ triggers=(
     "OnSharepointUpdatedFile|OnUpdatedFile|$(jq -nc --arg d "$sharepointSiteAddress" --arg f "$sharepointFolderId" '[{name:"dataset",value:$d},{name:"folderId",value:$f}]')"
 )
 
+sharepointListId=$(echo "$outputs" | jq -r '.SHAREPOINT_LIST_ID // empty')
+sharepointLibraryId=$(echo "$outputs" | jq -r '.SHAREPOINT_LIBRARY_ID // empty')
+sharepointFormId=$(echo "$outputs" | jq -r '.SHAREPOINT_FORM_ID // empty')
+sharepointDigestSchedule=$(echo "$outputs" | jq -r '.SHAREPOINT_DIGEST_SCHEDULE // empty')
+
+if [[ -n "$sharepointListId" ]]; then
+    listParameters=$(jq -nc --arg d "$sharepointSiteAddress" --arg l "$sharepointListId" '[{name:"dataset",value:$d},{name:"table",value:$l}]')
+    triggers+=(
+        "OnSharepointChangedItems|GetOnChangedItems|${listParameters}"
+        "OnSharepointDeletedItems|GetOnDeletedItems|${listParameters}"
+        "OnSharepointNewItems|GetOnNewItems|${listParameters}"
+        "OnSharepointUpdatedItems|GetOnUpdatedItems|${listParameters}"
+    )
+else
+    echo -e "${YELLOW}WARNING: List item triggers are not configured. Set SHAREPOINT_LIST_ID with 'azd env set' and rerun this hook.${NC}" >&2
+fi
+
+if [[ -n "$sharepointLibraryId" ]]; then
+    libraryParameters=$(jq -nc --arg d "$sharepointSiteAddress" --arg l "$sharepointLibraryId" '[{name:"dataset",value:$d},{name:"table",value:$l}]')
+    triggers+=(
+        "OnSharepointDeletedFileItems|GetOnDeletedFileItems|${libraryParameters}"
+        "OnSharepointNewFileItems|GetOnNewFileItems|${libraryParameters}"
+        "OnSharepointUpdatedFileClassifiedTimes|GetOnUpdatedFileClassifiedTimes|${libraryParameters}"
+        "OnSharepointUpdatedFileItems|GetOnUpdatedFileItems|${libraryParameters}"
+    )
+else
+    echo -e "${YELLOW}WARNING: File property triggers are not configured. Set SHAREPOINT_LIBRARY_ID with 'azd env set' and rerun this hook.${NC}" >&2
+fi
+
+if [[ -n "$sharepointListId" && -n "$sharepointFormId" ]]; then
+    triggers+=("OnSharepointNewItemsFromForm|GetOnNewItemsFromForm|$(jq -nc --arg d "$sharepointSiteAddress" --arg l "$sharepointListId" --arg f "$sharepointFormId" '[{name:"dataset",value:$d},{name:"table",value:$l},{name:"form",value:$f}]')")
+else
+    echo -e "${YELLOW}WARNING: Form trigger is not configured. Set SHAREPOINT_LIST_ID and SHAREPOINT_FORM_ID with 'azd env set' and rerun this hook.${NC}" >&2
+fi
+
+if [[ -n "$sharepointListId" && -n "$sharepointDigestSchedule" ]]; then
+    triggers+=("OnSharepointRecurrenceDigest|GetOnRecurrenceDigest|$(jq -nc --arg d "$sharepointSiteAddress" --arg l "$sharepointListId" --arg s "$sharepointDigestSchedule" '[{name:"dataset",value:$d},{name:"table",value:$l},{name:"add",value:true},{name:"update",value:true},{name:"runSchedule",value:$s}]')")
+else
+    echo -e "${YELLOW}WARNING: Digest trigger is not configured. Set SHAREPOINT_LIST_ID and SHAREPOINT_DIGEST_SCHEDULE with 'azd env set' and rerun this hook.${NC}" >&2
+fi
+
 triggerFailures=()
 for entry in "${triggers[@]}"; do
     IFS='|' read -r functionName operationName parameters <<< "$entry"

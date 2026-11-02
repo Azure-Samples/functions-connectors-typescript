@@ -2,12 +2,11 @@
 // Licensed under the MIT License.
 
 import { InvocationContext } from '@azure/functions';
-import { AzureBlobMetadata, connectorTrigger } from '@azure/functions-extensions-connectors';
+import { BlobMetadata as AzureBlobMetadata } from '@azure/connectors/generated/AzureblobExtensions';
+import { connectorTrigger } from '@azure/functions-extensions-connectors';
 
-// NOTE(swapnilnagar): Uses the lower-level generic connectorTrigger<TItem> API instead of
-// connectors.azureblob.onUpdatedFile. The function name still binds to the AzureBlob
-// onUpdatedFile operation on the host side; the generic API just gives you raw control
-// over the item type without depending on a first-class wrapper.
+// Azure Blob has no first-class wrapper in 0.1.0-preview. Configure its
+// OnUpdatedFiles_V2 subscription to target this registered function name.
 connectorTrigger<AzureBlobMetadata>('OnGenericAzureBlobUpdated', {
     handler: async (context, invocationContext: InvocationContext) => {
         invocationContext.log('OnGenericAzureBlobUpdated (generic API) trigger received.');

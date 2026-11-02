@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 import { InvocationContext } from '@azure/functions';
-import { connectors, GroupMembershipTriggerContext } from '@azure/functions-extensions-connectors';
+import { connectors, TeamMemberTriggerContext } from '@azure/functions-extensions-connectors';
 
-connectors.teams.onGroupMembershipRemoval('OnGroupMembershipRemoval', {
-    handler: async (context: GroupMembershipTriggerContext, invocationContext: InvocationContext) => {
+connectors.teams.onTeamMemberRemoved('OnGroupMembershipRemoval', {
+    handler: async (context: TeamMemberTriggerContext, invocationContext: InvocationContext) => {
         invocationContext.log('OnGroupMembershipRemoval trigger received.');
 
         for (const member of context.members) {

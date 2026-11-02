@@ -134,7 +134,7 @@ create_onedrive_connection() {
         -g "${resourceGroupName}" \
         --namespace "${connectorNamespaceName}" \
         -n "${connectionName}" \
-        --connector-name 'onedrive'; then
+        --connector-name 'onedriveforbusiness'; then
         echo -e "${RED}   Failed to create connection '${connectionName}'.${NC}"
         return 1
     fi
@@ -308,7 +308,7 @@ select_onedrive_folder() {
         if [[ "$curId" == "root" ]]; then
             listingPath='/datasets/default/folders'
         else
-            listingPath="/datasets/default/folders/$(urlencode "$curId")"
+            listingPath="/datasets/default/foldersV2/$(urlencode "$(urlencode "$curId")")"
         fi
         local body
         body=$(connection_invoke "$listingPath" 'get' || true)
@@ -322,6 +322,11 @@ select_onedrive_folder() {
             entries+=(".. (go up)"); actions+=("up"); targetIds+=(""); targetPaths+=("")
         fi
         if [[ -n "$body" && "$body" != "null" ]]; then
+            local folderItems
+            if ! folderItems=$(echo "$body" | jq -c 'if type == "array" then . elif type == "object" and (.value | type) == "array" then .value else error("Unexpected OneDrive folder listing") end'); then
+                echo -e "${RED}ERROR: Expected a OneDrive folder array or an object with a value array.${NC}" >&2
+                return 1
+            fi
             while IFS=$'\t' read -r cName cId; do
                 [[ -z "$cId" ]] && continue
                 entries+=("-> ${cName}")
@@ -331,7 +336,7 @@ select_onedrive_folder() {
                 else
                     targetPaths+=("${curPath}/${cName}")
                 fi
-            done < <(echo "$body" | jq -r '.[] | select(.IsFolder == true) | [.Name, .Id] | @tsv' 2>/dev/null)
+            done < <(echo "$folderItems" | jq -r '.[] | select(.IsFolder == true) | [.Name, .Id] | @tsv')
         fi
         entries+=("(Enter folder id manually...)"); actions+=("manual"); targetIds+=(""); targetPaths+=("")
         entries+=("(Cancel — skip trigger creation)"); actions+=("cancel"); targetIds+=(""); targetPaths+=("")
@@ -376,12 +381,12 @@ if [[ -z "$connectorExtensionKey" ]]; then
 fi
 
 connectionDetails=$(jq -nc --arg conn "${onedriveConnectionName}" \
-    '{connectorName:"onedrive", connectionName:$conn}')
+    '{connectorName:"onedriveforbusiness", connectionName:$conn}')
 
 # functionName | operationName | parameters JSON
 triggers=(
-    "OnOneDriveNewFile|OnNewFileV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
-    "OnOneDriveUpdatedFile|OnUpdatedFileV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
+    "OnOneDriveNewFile|OnNewFilesV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
+    "OnOneDriveUpdatedFile|OnUpdatedFilesV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
 )
 
 triggerFailures=()
