@@ -40,6 +40,10 @@ All apps use:
 
 The connector extension requires **Node.js 24+**. Package engines, Node.js type definitions, and the deployment templates use Node.js 24.
 
+The `name` in each `azure.yaml` is a lowercase project slug, as required by the azd schema. Folder names and registered Function names are unchanged.
+
+Each app's `.funcignore` keeps local settings, azd state, editor files, Azurite data, and build-time source/infrastructure out of deployment packages. Compiled functions and installed runtime dependencies remain included.
+
 Existing registered function names remain unchanged, but some helper names changed:
 
 - Office 365 uses `onNewEmailMentioningMe` and `onUpcomingEvents`.

@@ -129,6 +129,14 @@ for (const [appName, expectedNames] of selected) {
         });
 
         await t.test('host and deployment runtime configuration match the extension', async () => {
+            const azureYaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+            const projectName = azureYaml.match(/^name:\s*(\S+)\s*$/m)?.[1];
+            assert.ok(projectName && projectName.length >= 2, 'The azd project must have a name.');
+            assert.match(projectName, /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/, 'The azd schema requires a lowercase project-name slug.');
+            const ignored = (await readFile(path.join(appRoot, '.funcignore'), 'utf8')).split(/\r?\n/);
+            for (const entry of ['.azure/', 'local.settings.json', '__azurite_db_*.json', '__blobstorage__/', '__queuestorage__/']) {
+                assert.ok(ignored.includes(entry), `Deployment packages must exclude ${entry}.`);
+            }
             const host = JSON.parse(await readFile(path.join(appRoot, 'host.json'), 'utf8'));
             assert.equal(host.version, '2.0');
             assert.equal(host.extensionBundle.id, 'Microsoft.Azure.Functions.ExtensionBundle.Preview');
