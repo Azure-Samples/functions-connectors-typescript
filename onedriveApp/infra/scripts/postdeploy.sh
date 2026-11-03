@@ -385,6 +385,8 @@ connectionDetails=$(jq -nc --arg conn "${onedriveConnectionName}" \
 
 # functionName | operationName | parameters JSON
 triggers=(
+    "OnOneDriveNewFileContent|OnNewFileV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
+    "OnOneDriveUpdatedFileContent|OnUpdatedFileV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
     "OnOneDriveNewFile|OnNewFilesV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
     "OnOneDriveUpdatedFile|OnUpdatedFilesV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
 )

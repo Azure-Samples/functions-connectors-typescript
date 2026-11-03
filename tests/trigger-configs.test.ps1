@@ -84,7 +84,7 @@ $cases = @(
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'digest'; count = 5; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'all'; count = 10; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_LIBRARY_ID = 'test-library'; SHAREPOINT_FORM_ID = 'test-form'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'form and digest without list'; count = 0; values = @{ SHAREPOINT_FORM_ID = 'test-form'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
-    @{ app = 'onedriveApp'; sdk = 'Onedriveforbusiness'; label = 'metadata'; count = 2; values = @{} }
+    @{ app = 'onedriveApp'; sdk = 'Onedriveforbusiness'; label = 'content and metadata'; count = 4; values = @{} }
 )
 
 foreach ($case in $cases) {
@@ -95,6 +95,15 @@ foreach ($case in $cases) {
         $calendarConfigs = @($configs | Where-Object { $_.operationName -eq 'CalendarGetOnNewItemsV3' })
         Assert-Condition ($calendarConfigs.Count -eq 1) "$label must configure exactly one new-calendar subscription."
         Assert-Condition ($calendarConfigs[0].functionName -eq 'OnCalendarNewItems') "$label must route new calendar events to OnCalendarNewItems."
+    }
+    if ($case.app -eq 'onedriveApp') {
+        $operations = @($configs.operationName | Sort-Object)
+        $expected = @('OnNewFileV2', 'OnNewFilesV2', 'OnUpdatedFileV2', 'OnUpdatedFilesV2') | Sort-Object
+        Assert-Condition (($operations -join '|') -ceq ($expected -join '|')) "$label must configure both content and both metadata operations."
+        foreach ($config in $configs) {
+            $folder = @($config.parameters | Where-Object { $_.name -eq 'folderId' })
+            Assert-Condition ($folder.Count -eq 1 -and $folder[0].value -eq 'test-folder') "$label must use the selected folder for every subscription."
+        }
     }
     $names = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($config in $configs) {

@@ -390,9 +390,11 @@ $onedriveFolderId = $selected
 azd env set ONEDRIVE_FOLDER_ID $onedriveFolderId | Out-Null
 Write-Host "Saved ONEDRIVE_FOLDER_ID=$onedriveFolderId" -ForegroundColor Green
 
-# Metadata trigger operations from the OneDrive for Business connector:
+# Content and metadata trigger operations from the OneDrive for Business connector:
 # https://learn.microsoft.com/en-us/connectors/onedriveforbusiness/.
 $triggers = @(
+    @{ functionName = 'OnOneDriveNewFileContent'; operationName = 'OnNewFileV2'; parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) },
+    @{ functionName = 'OnOneDriveUpdatedFileContent'; operationName = 'OnUpdatedFileV2'; parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) },
     @{ functionName = 'OnOneDriveNewFile';     operationName = 'OnNewFilesV2';     parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) },
     @{ functionName = 'OnOneDriveUpdatedFile'; operationName = 'OnUpdatedFilesV2'; parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) }
 )

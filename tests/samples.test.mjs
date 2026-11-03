@@ -15,7 +15,7 @@ const samples = {
     genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
     kustoApp: ['OnKustoQueryResult'],
     office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
-    onedriveApp: ['OnOneDriveNewFile', 'OnOneDriveUpdatedFile'],
+    onedriveApp: ['OnOneDriveNewFile', 'OnOneDriveUpdatedFile', 'OnOneDriveNewFileContent', 'OnOneDriveUpdatedFileContent'],
     plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
     salesforceApp: ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
     sharepointApp: [
@@ -51,6 +51,10 @@ const appsWithHooks = new Set(['office365App', 'onedriveApp', 'sharepointApp', '
 const publishedApis = new Set();
 const coveredApis = new Set();
 const excludedApis = new Set(['sharepoint.onNewFile', 'sharepoint.onUpdatedFile', 'office365.onNewCalendarEvent']);
+const oneDriveContentOperations = {
+    OnOneDriveNewFileContent: 'OnNewFile',
+    OnOneDriveUpdatedFileContent: 'OnUpdatedFile',
+};
 
 function itemFor(appName, name, index) {
     const marker = `sample-item-${index}`;
@@ -200,7 +204,8 @@ for (const [appName, expectedNames] of selected) {
                     .filter((api) => !excludedApis.has(api))
                 : [];
             assert.deepEqual([...apiCalls.values()].sort(), expected.sort());
-            assert.equal(apiCalls.size, connector ? expectedNames.length : 0);
+            const rawCount = appName === 'onedriveApp' ? Object.keys(oneDriveContentOperations).length : 0;
+            assert.equal(apiCalls.size, connector ? expectedNames.length - rawCount : 0);
         });
 
         if (appsWithHooks.has(appName)) {
@@ -208,6 +213,12 @@ for (const [appName, expectedNames] of selected) {
                 const { sdk } = connectorSamples[appName];
                 const sdkModule = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/generated', `${sdk}Extensions.js`)).href);
                 const operations = sdkModule[`${sdk}TriggerOperations`];
+                const operationKeys = new Map([...apiCalls].map(([name, api]) => [name, `O${api.split('.')[1].slice(1)}`]));
+                if (appName === 'onedriveApp') {
+                    for (const [name, key] of Object.entries(oneDriveContentOperations)) {
+                        operationKeys.set(name, key);
+                    }
+                }
                 for (const suffix of ['ps1', 'sh']) {
                     const hook = await readFile(path.join(appRoot, 'infra/scripts', `postdeploy.${suffix}`), 'utf8');
                     if (appName === 'sharepointApp') {
@@ -217,11 +228,9 @@ for (const [appName, expectedNames] of selected) {
                         assert.doesNotMatch(hook, /\bOnNewCalendarEvent\b|\bCreateOnNewEmailSubscription\b/);
                         assert.equal(hook.match(/\bCalendarGetOnNewItemsV3\b/g)?.length, 1, 'Create only one new-calendar subscription.');
                     }
-                    for (const [name, api] of apiCalls) {
-                        const method = api.split('.')[1];
-                        const key = `O${method.slice(1)}`;
+                    for (const [name, key] of operationKeys) {
                         const operation = operations[key];
-                        assert.equal(typeof operation, 'string', `Missing SDK operation for ${api}.`);
+                        assert.equal(typeof operation, 'string', `Missing SDK operation for ${name}.`);
                         const matches = suffix === 'ps1'
                             ? new RegExp(`functionName = '${name}';\\s+operationName = '${operation}'`).test(hook)
                             : hook.includes(`${name}|${operation}|`);
@@ -239,6 +248,31 @@ for (const [appName, expectedNames] of selected) {
         }
 
         for (const [name, { handler }] of registrations) {
+            if (appName === 'onedriveApp' && Object.hasOwn(oneDriveContentOperations, name)) {
+                const binaryEnvelope = { body: { '$content-type': 'application/octet-stream', '$content': 'AP8B' }, headers: { 'x-test': 'preserved' } };
+                const contentCases = [
+                    ['binary content', Buffer.from([0, 255, 1])],
+                    ['binary envelope', binaryEnvelope],
+                    ['text envelope', { body: 'private-file-content' }],
+                    ['JSON envelope', JSON.stringify(binaryEnvelope)],
+                    ['raw text', 'private-file-content'],
+                    ['JSON file content', '{"value":"private-file-content"}'],
+                    ['empty content', { body: '' }],
+                    ['null payload', null],
+                ];
+                for (const [label, input] of contentCases) {
+                    await t.test(`${name}: ${label}`, async () => {
+                        const logs = [];
+                        const result = await handler(input, {
+                            log: (...args) => logs.push(args.join(' ')),
+                            warn: () => assert.fail('Opaque content must not be parsed as a metadata payload.'),
+                        });
+                        assert.strictEqual(result, input, 'Content and its envelope must be preserved unchanged.');
+                        assert.deepEqual(logs, [`${name} content trigger received.`], 'Do not log file contents.');
+                    });
+                }
+                continue;
+            }
             const items = [itemFor(appName, name, 1), itemFor(appName, name, 2)];
             const batch = { body: { value: items }, headers: { 'x-test': 'preserved' } };
             const single = { body: items[0] };
@@ -291,6 +325,6 @@ if (cwd === path.resolve(root)) {
     await test('all 40 non-deprecated, non-duplicate typed registrations are covered across the sample apps', () => {
         assert.equal(publishedApis.size, 43);
         assert.deepEqual([...coveredApis].sort(), [...publishedApis].filter((api) => !excludedApis.has(api)).sort());
-        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 46);
+        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 48);
     });
 }

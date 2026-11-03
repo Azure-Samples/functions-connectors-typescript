@@ -13,14 +13,14 @@ TypeScript samples for the [Azure Functions Connector Samples](https://github.co
 | [genericApp](genericApp/) | Any connector | Generic `connectorTrigger<TItem>` examples with custom item types |
 | [kustoApp](kustoApp/) | [Azure Data Explorer](https://learn.microsoft.com/connectors/kusto/) | Typed query-result callback helper; no SDK trigger operation |
 | [office365App](office365App/) | [Office 365 Outlook](https://learn.microsoft.com/connectors/office365/) | New, flagged, mentioning-you, and shared mailbox emails; new, updated, changed, and upcoming calendar events |
-| [onedriveApp](onedriveApp/) | [OneDrive for Business](https://learn.microsoft.com/connectors/onedriveforbusiness/) | New and updated file metadata |
+| [onedriveApp](onedriveApp/) | [OneDrive for Business](https://learn.microsoft.com/connectors/onedriveforbusiness/) | New and updated file content and metadata |
 | [plannerApp](plannerApp/) | [Planner](https://learn.microsoft.com/connectors/planner/) | New, completed, and assigned-to-me tasks |
 | [salesforceApp](salesforceApp/) | [Salesforce](https://learn.microsoft.com/connectors/salesforce/) | New and updated records |
 | [sharepointApp](sharepointApp/) | [SharePoint Online](https://learn.microsoft.com/connectors/sharepointonline/) | File metadata, file properties, list items, deletions, forms, classification changes, and recurring digests |
 | [teamsApp](teamsApp/) | [Microsoft Teams](https://learn.microsoft.com/connectors/teams/) | Channel messages, mentions, and team membership changes |
 | [vstsApp](vstsApp/) | [Azure DevOps](https://learn.microsoft.com/connectors/visualstudioteamservices/) | Builds, pull requests, pushes, TFVC check-ins, and work item changes |
 
-The eleven apps contain 46 sample functions, covering **40 typed registrations in nine namespaces** exported by `@azure/functions-extensions-connectors@0.1.0-preview`, plus six generic examples. The samples omit two deprecated SharePoint file helpers and one duplicate Office 365 calendar alias from the 43 exported helpers. The typed count includes the Kusto query-result helper, which is not a remote trigger operation.
+The eleven apps contain 48 sample functions, covering **40 typed registrations in nine namespaces** exported by `@azure/functions-extensions-connectors@0.1.0-preview`, plus six generic examples and two raw OneDrive content handlers. The samples omit two deprecated SharePoint file helpers and one duplicate Office 365 calendar alias from the 43 exported helpers. The typed count includes the Kusto query-result helper, which is not a remote trigger operation.
 
 Each folder has its own dependencies, `azure.yaml`, host configuration, and source code. The five original connector-specific apps configure connections and triggers through deployment hooks; additional Office 365 and SharePoint subscriptions require the optional settings documented in their READMEs. `genericApp` and the five new apps use [manual connector setup](#manual-connector-setup). The new apps reuse [genericApp's deployment module](genericApp/infra/main.bicep), so keep the full repository checkout when deploying them.
 
@@ -48,7 +48,7 @@ Retained registered function names remain unchanged, but some helper names chang
 
 - Office 365 uses `onNewEmailMentioningMe` and `onUpcomingEvents`.
 - Teams uses `onTeamMemberAdded` / `onTeamMemberRemoved` with `TeamMemberTriggerContext`.
-- OneDrive uses `connectors.onedriveforbusiness.onNewFiles` / `onUpdatedFiles`, with metadata operations `OnNewFilesV2` / `OnUpdatedFilesV2`, not the similarly named file-content operations.
+- OneDrive uses `connectors.onedriveforbusiness.onNewFiles` / `onUpdatedFiles` for metadata operations `OnNewFilesV2` / `OnUpdatedFilesV2`. Separate raw `app.connectorTrigger` handlers cover the singular file-content operations `OnNewFileV2` / `OnUpdatedFileV2`.
 - Azure Blob has no first-class helper or metadata re-export in this release. Both Blob examples use `connectorTrigger<AzureBlobMetadata>`, importing the metadata type from `@azure/connectors/generated/AzureblobExtensions`.
 - `office365.onCalendarNewItems` is an alias for `onNewCalendarEvent`. Only `onCalendarNewItems` has an example and subscription, avoiding duplicate delivery for the same calendar operation.
 
