@@ -12,7 +12,7 @@
     "start": "func start"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "@azure/connectors": "0.3.0",
@@ -20,7 +20,7 @@
     "@azure/functions-extensions-connectors": "0.0.2-preview"
   },
   "devDependencies": {
-    "@types/node": "^20.19.41",
+    "@types/node": "^24.0.0",
     "typescript": "^5.0.0"
   }
 }

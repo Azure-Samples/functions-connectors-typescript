@@ -130,7 +130,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       }
       runtime: {
         name: 'node'
-        version: '20'
+        version: '24'
       }
     }
     siteConfig: {

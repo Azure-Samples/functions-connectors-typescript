@@ -29,7 +29,7 @@ Run `npm test` from a sample directory to build its TypeScript source and run th
 
 - An Azure subscription with permission to provision resources and configure access policies.
 - [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) and [Azure CLI (`az`)](https://learn.microsoft.com/cli/azure/install-azure-cli).
-- [Node.js](https://nodejs.org/) 20+ and npm. The deployment templates currently select Node.js 20.
+- [Node.js](https://nodejs.org/) 24+ and npm. The deployment templates select Node.js 24.
 - [`connector-namespace` Azure CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli).
 - PowerShell 7+ (`pwsh`) on Windows, or Bash and `jq` on macOS/Linux, for deployment hooks.
 - For local development: [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local) v4 and [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) when using `UseDevelopmentStorage=true`.
