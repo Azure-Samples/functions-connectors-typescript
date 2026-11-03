@@ -27,8 +27,8 @@ The suite checks:
 - Every manifest, lockfile, and installed package uses the requested `@azure/connectors@0.3.1-preview`, `@azure/functions@^4.17.0`, and `@azure/functions-extensions-connectors@0.1.0-preview` releases, plus CommonJS and ESM SDK entry-point loading.
 - The extension and app resolve the same SDK installation, and host/deployment runtime settings match Node.js 24.
 - All azd project names use schema-compliant lowercase slugs, and deployment ignore files protect local settings, azd state, and Azurite data.
-- All 49 expected sample functions register through the actual connector extension.
-- The samples actually call all 43 public typed registration helpers, including the calendar alias and Kusto callback helper. The expected API list is discovered from the installed extension, not inferred from handler names.
+- All 47 expected sample functions register through the actual connector extension.
+- The samples actually call all 41 non-deprecated public typed registration helpers, including the calendar alias and Kusto callback helper. The expected API list is discovered from the installed extension, excluding the two deprecated SharePoint file helpers, not inferred from handler names.
 - Both platform hooks for Office 365, OneDrive for Business, SharePoint, and Teams map registered function names to operation IDs from the installed SDK.
 - Eight payload scenarios per handler: object and JSON batches, object and JSON single items, empty batches, missing bodies, null payloads, and malformed JSON.
 - Additional flat-record batch and single-item scenarios for all ten dynamic SharePoint and Salesforce handlers; logging must not depend on a generated `dynamicProperties` wrapper being present.
@@ -36,7 +36,7 @@ The suite checks:
 
 Host registration is intercepted and public helper calls are observed, but the real connector extension's normalization and typed-context wrappers still execute. These offline tests do not load local settings, need credentials, start a Functions host, call connector services, or provision resources. They do not replace end-to-end validation with authorized connections and live events.
 
-The complete Node suite contains 472 checks, including 412 handler payload scenarios.
+The complete Node suite contains 456 checks, including 396 handler payload scenarios.
 
 ## Deployment configuration tests
 

@@ -4,8 +4,6 @@ Azure Functions app demonstrating typed SharePoint Online triggers from [`@azure
 
 | Function | Helper under `connectors.sharepoint` | Connector operation |
 | -------- | ----------------------------------- | ------------------- |
-| [OnSharepointNewFile](src/functions/onSharepointNewFile.ts) | `onNewFile` | `OnNewFile` |
-| [OnSharepointUpdatedFile](src/functions/onSharepointUpdatedFile.ts) | `onUpdatedFile` | `OnUpdatedFile` |
 | [OnSharepointChangedItems](src/functions/onSharepointChangedItems.ts) | `onChangedItems` | `GetOnChangedItems` |
 | [OnSharepointDeletedFileItems](src/functions/onSharepointDeletedFileItems.ts) | `onDeletedFileItems` | `GetOnDeletedFileItems` |
 | [OnSharepointDeletedItems](src/functions/onSharepointDeletedItems.ts) | `onDeletedItems` | `GetOnDeletedItems` |
@@ -17,7 +15,7 @@ Azure Functions app demonstrating typed SharePoint Online triggers from [`@azure
 | [OnSharepointUpdatedFileItems](src/functions/onSharepointUpdatedFileItems.ts) | `onUpdatedFileItems` | `GetOnUpdatedFileItems` |
 | [OnSharepointUpdatedItems](src/functions/onSharepointUpdatedItems.ts) | `onUpdatedItems` | `GetOnUpdatedItems` |
 
-All twelve helpers have examples. The original file helpers retain `FileTriggerContext.files`. List items, file properties, classification changes, form submissions, and digests use `SharepointItemTriggerContext.records`. Whole-record JSON logging preserves the SDK's `dynamicProperties` and raw callback fields without inventing a list schema. Deletions use `DeletedItemTriggerContext.deletedItems` with fields such as `ID`, `Name`, and `TimeDeleted`.
+All ten non-deprecated helpers have examples. List items, file properties, classification changes, form submissions, and digests use `SharepointItemTriggerContext.records`. Whole-record JSON logging preserves the SDK's `dynamicProperties` and raw callback fields without inventing a list schema. Deletions use `DeletedItemTriggerContext.deletedItems` with fields such as `ID`, `Name`, and `TimeDeleted`.
 
 ## Prerequisites
 
@@ -33,7 +31,7 @@ azd auth login
 azd up
 ```
 
-The deployment builds the TypeScript app and runs the [postdeploy hook](azure.yaml). Enter the SharePoint site address and folder when prompted, and complete OAuth consent in your browser. The hook always creates the original two file triggers; additional subscriptions are enabled by the settings below.
+The deployment builds the TypeScript app and runs the [postdeploy hook](azure.yaml). Enter the SharePoint site address when prompted, and complete OAuth consent in your browser. Subscriptions are enabled by the settings below; configure at least a list or library ID to create triggers.
 
 ## Resources provisioned
 
@@ -45,16 +43,15 @@ The Preview Functions Extension Bundle is already configured in [host.json](host
 
 ## Connector configuration
 
-The hook saves your selections as `SHAREPOINT_SITE_ADDRESS` and `SHAREPOINT_FOLDER_ID` on the azd environment. To skip these prompts, set them in advance:
+The hook saves your selection as `SHAREPOINT_SITE_ADDRESS` on the azd environment. To skip this prompt, set it in advance:
 
 ```sh
 azd env set SHAREPOINT_SITE_ADDRESS "https://contoso.sharepoint.com/sites/MySite"
-azd env set SHAREPOINT_FOLDER_ID "/Shared Documents"
 ```
 
-Enable additional examples with connector-specific identifiers from that site:
+Enable examples with connector-specific identifiers from that site:
 
-| azd setting | Additional subscriptions |
+| azd setting | Subscriptions |
 | ----------- | ------------------------ |
 | `SHAREPOINT_LIST_ID` | Changed, deleted, new, and updated list items |
 | `SHAREPOINT_LIBRARY_ID` | Deleted files, new and updated file properties, and classification changes |
@@ -80,7 +77,7 @@ azd hooks run postdeploy
 
 ## Verify
 
-Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one SharePoint Online connection in `Connected` state and between two and twelve triggers in `Enabled` state, depending on the optional settings.
+Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one SharePoint Online connection in `Connected` state and up to ten triggers in `Enabled` state, depending on the settings. Without a list or library ID, no triggers are created.
 
 Create, modify, or delete a test file or list item, submit the configured form, or wait for the digest schedule, then inspect Function App logs. If the connection is unauthenticated or expected subscriptions are missing, check the optional settings, rerun the hook, and complete consent.
 

@@ -38,7 +38,6 @@ fi
 
 # --- Required SharePoint identifiers ----------------------------------------
 sharepointSiteAddress=$(echo "$outputs" | jq -r '.SHAREPOINT_SITE_ADDRESS // empty')
-sharepointFolderId=$(echo "$outputs"    | jq -r '.SHAREPOINT_FOLDER_ID // empty')
 
 LAST_GRAPH_ERROR=""
 
@@ -104,7 +103,7 @@ select_from_list() {
     done
 }
 
-if [[ -z "$sharepointSiteAddress" || -z "$sharepointFolderId" ]]; then
+if [[ -z "$sharepointSiteAddress" ]]; then
     echo ""
     echo -e "${YELLOW}Fetching SharePoint sites accessible to your account from Microsoft Graph...${NC}"
 
@@ -114,19 +113,18 @@ if [[ -z "$sharepointSiteAddress" || -z "$sharepointFolderId" ]]; then
     # NOTE: We deliberately do NOT attempt 'az login --scope https://graph.microsoft.com/Sites.Read.All'.
     # Many tenants block that flow with AADSTS65002 (the Azure CLI first-party app is not
     # pre-authorized for Microsoft Graph). Fall back to manual site URL entry instead and let
-    # the library/folder pickers run via Graph against that specific site.
+    # the user provide the site URL directly.
 
     if [[ -z "$sitesJson" || "$sitesCount" == "0" ]]; then
         echo ""
         echo -e "${YELLOW}NOTE: The Azure CLI access token cannot enumerate SharePoint sites via Microsoft Graph search.${NC}" >&2
         echo -e "      (This is expected when the tenant has not pre-authorized the Azure CLI for 'Sites.Read.All'.)" >&2
-        echo -e "${YELLOW}      You can paste the site URL directly; the library and folder pickers will still run.${NC}" >&2
+        echo -e "${YELLOW}      You can paste the site URL directly.${NC}" >&2
         echo ""
         read -r -p "SharePoint site URL (e.g. https://contoso.sharepoint.com/sites/MySite): " sharepointSiteAddress
         if [[ -z "$sharepointSiteAddress" ]]; then
             echo -e "${RED}ERROR: No site provided. Set the values manually:${NC}" >&2
             echo -e "${RED}         azd env set SHAREPOINT_SITE_ADDRESS https://contoso.sharepoint.com/sites/MySite${NC}" >&2
-            echo -e "${RED}         azd env set SHAREPOINT_FOLDER_ID    '/Shared Documents'${NC}" >&2
             exit 1
         fi
         azd env set SHAREPOINT_SITE_ADDRESS "$sharepointSiteAddress" >/dev/null
@@ -142,7 +140,6 @@ if [[ -z "$sharepointSiteAddress" || -z "$sharepointFolderId" ]]; then
         siteIds=(); siteUrls=(); siteNames=()
     fi
 
-    selectedSiteId=""
     if [[ -z "$sharepointSiteAddress" ]]; then
         siteEntries=()
         for ((i=0; i<${#siteNames[@]}; i++)); do
@@ -150,72 +147,8 @@ if [[ -z "$sharepointSiteAddress" || -z "$sharepointFolderId" ]]; then
         done
         idx=$(select_from_list 'Select a SharePoint site:' "${siteEntries[@]}")
         sharepointSiteAddress="${siteUrls[$idx]}"
-        selectedSiteId="${siteIds[$idx]}"
         azd env set SHAREPOINT_SITE_ADDRESS "$sharepointSiteAddress" >/dev/null
         echo -e "${GREEN}Saved SHAREPOINT_SITE_ADDRESS=$sharepointSiteAddress${NC}"
-    else
-        for ((i=0; i<${#siteUrls[@]}; i++)); do
-            if [[ "${siteUrls[$i]}" == "$sharepointSiteAddress" ]]; then
-                selectedSiteId="${siteIds[$i]}"; break
-            fi
-        done
-    fi
-
-    if [[ -z "$sharepointFolderId" ]]; then
-        if [[ -z "$selectedSiteId" ]]; then
-            # Resolve via /sites/{host}:{path}
-            siteHost=$(echo "$sharepointSiteAddress" | awk -F/ '{print $3}')
-            sitePath=$(echo "$sharepointSiteAddress" | sed -E 's|^https?://[^/]+||' | sed -E 's|/$||')
-            resolveUrl="https://graph.microsoft.com/v1.0/sites/${siteHost}:${sitePath}?\$select=id"
-            resolveJson=$(graph_get "$resolveUrl" || true)
-            selectedSiteId=$(echo "$resolveJson" | jq -r '.id // empty')
-        fi
-
-        if [[ -z "$selectedSiteId" ]]; then
-            echo -e "${YELLOW}NOTE: Microsoft Graph could not resolve the site id (likely 'Sites.Read.All' is not consented for the Azure CLI).${NC}"
-            read -r -p "Document library / folder path (press Enter for '/Shared Documents'): " manualFolder
-            if [[ -z "$manualFolder" ]]; then manualFolder='/Shared Documents'; fi
-            sharepointFolderId="$manualFolder"
-        else
-            drivesJson=$(graph_get "https://graph.microsoft.com/v1.0/sites/${selectedSiteId}/drives?\$select=id,name,webUrl" || true)
-            drivesCount=$(echo "$drivesJson" | jq -r '.value | length // 0')
-            if [[ -z "$drivesJson" || "$drivesCount" == "0" ]]; then
-                echo -e "${YELLOW}NOTE: Microsoft Graph returned no document libraries for this site.${NC}"
-                read -r -p "Document library / folder path (press Enter for '/Shared Documents'): " manualFolder
-                if [[ -z "$manualFolder" ]]; then manualFolder='/Shared Documents'; fi
-                sharepointFolderId="$manualFolder"
-            else
-                mapfile -t driveIds   < <(echo "$drivesJson" | jq -r '.value[].id')
-                mapfile -t driveNames < <(echo "$drivesJson" | jq -r '.value[].name')
-                driveEntries=()
-                for n in "${driveNames[@]}"; do driveEntries+=("$n"); done
-                idx=$(select_from_list 'Select a document library:' "${driveEntries[@]}")
-                driveId="${driveIds[$idx]}"
-                folderName="${driveNames[$idx]}"
-                if [[ "$folderName" == "Documents" ]]; then folderName="Shared Documents"; fi
-                libraryRoot="/$folderName"
-
-                # Let the user pick the library root or drill into a subfolder.
-                childrenJson=$(graph_get "https://graph.microsoft.com/v1.0/drives/${driveId}/root/children?\$select=name,folder&\$top=200" 2>/dev/null || echo "")
-                childFolderEntries=("(library root: ${libraryRoot})")
-                childFolderPaths=("")
-                if [[ -n "$childrenJson" ]]; then
-                    while IFS= read -r childName; do
-                        childFolderEntries+=("$childName")
-                        childFolderPaths+=("/$childName")
-                    done < <(echo "$childrenJson" | jq -r '.value[] | select(.folder != null) | .name')
-                fi
-
-                if [[ ${#childFolderEntries[@]} -le 1 ]]; then
-                    sharepointFolderId="$libraryRoot"
-                else
-                    fidx=$(select_from_list 'Select a folder (or library root):' "${childFolderEntries[@]}")
-                    sharepointFolderId="${libraryRoot}${childFolderPaths[$fidx]}"
-                fi
-            fi
-        fi
-        azd env set SHAREPOINT_FOLDER_ID "$sharepointFolderId" >/dev/null
-        echo -e "${GREEN}Saved SHAREPOINT_FOLDER_ID=$sharepointFolderId${NC}"
     fi
 fi
 
@@ -380,10 +313,7 @@ connectionDetails=$(jq -nc --arg conn "${sharepointConnectionName}" \
     '{connectorName:"sharepointonline", connectionName:$conn}')
 
 # functionName | operationName | parameters JSON
-triggers=(
-    "OnSharepointNewFile|OnNewFile|$(jq -nc --arg d "$sharepointSiteAddress" --arg f "$sharepointFolderId" '[{name:"dataset",value:$d},{name:"folderId",value:$f}]')"
-    "OnSharepointUpdatedFile|OnUpdatedFile|$(jq -nc --arg d "$sharepointSiteAddress" --arg f "$sharepointFolderId" '[{name:"dataset",value:$d},{name:"folderId",value:$f}]')"
-)
+triggers=()
 
 sharepointListId=$(echo "$outputs" | jq -r '.SHAREPOINT_LIST_ID // empty')
 sharepointLibraryId=$(echo "$outputs" | jq -r '.SHAREPOINT_LIBRARY_ID // empty')

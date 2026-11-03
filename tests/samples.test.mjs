@@ -20,8 +20,8 @@ const samples = {
     salesforceApp: ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
     sharepointApp: [
         'OnSharepointChangedItems', 'OnSharepointDeletedFileItems', 'OnSharepointDeletedItems',
-        'OnSharepointNewFile', 'OnSharepointNewFileItems', 'OnSharepointNewItems',
-        'OnSharepointNewItemsFromForm', 'OnSharepointRecurrenceDigest', 'OnSharepointUpdatedFile',
+        'OnSharepointNewFileItems', 'OnSharepointNewItems',
+        'OnSharepointNewItemsFromForm', 'OnSharepointRecurrenceDigest',
         'OnSharepointUpdatedFileClassifiedTimes', 'OnSharepointUpdatedFileItems', 'OnSharepointUpdatedItems',
     ],
     teamsApp: ['OnGroupMembershipAdd', 'OnGroupMembershipRemoval', 'OnNewChannelMessage', 'OnNewChannelMessageMentioningMe'],
@@ -50,6 +50,7 @@ const dependencies = {
 const appsWithHooks = new Set(['office365App', 'onedriveApp', 'sharepointApp', 'teamsApp']);
 const publishedApis = new Set();
 const coveredApis = new Set();
+const deprecatedApis = new Set(['sharepoint.onNewFile', 'sharepoint.onUpdatedFile']);
 
 function itemFor(appName, name, index) {
     const marker = `sample-item-${index}`;
@@ -190,12 +191,13 @@ for (const [appName, expectedNames] of selected) {
             assert.deepEqual([...registrations.keys()].sort(), [...expectedNames].sort());
         });
 
-        await t.test('every public helper for this connector is exercised', () => {
+        await t.test('every non-deprecated public helper for this connector is exercised', () => {
             const connector = connectorSamples[appName];
             const expected = connector
                 ? Object.entries(originalNamespaces.get(connector.namespace))
                     .filter(([, register]) => typeof register === 'function')
                     .map(([method]) => `${connector.namespace}.${method}`)
+                    .filter((api) => !deprecatedApis.has(api))
                 : [];
             assert.deepEqual([...apiCalls.values()].sort(), expected.sort());
             assert.equal(apiCalls.size, connector ? expectedNames.length : 0);
@@ -208,6 +210,9 @@ for (const [appName, expectedNames] of selected) {
                 const operations = sdkModule[`${sdk}TriggerOperations`];
                 for (const suffix of ['ps1', 'sh']) {
                     const hook = await readFile(path.join(appRoot, 'infra/scripts', `postdeploy.${suffix}`), 'utf8');
+                    if (appName === 'sharepointApp') {
+                        assert.doesNotMatch(hook, /\bOnSharepoint(?:New|Updated)File\b|\bSHAREPOINT_FOLDER_ID\b/);
+                    }
                     for (const [name, api] of apiCalls) {
                         const method = api.split('.')[1];
                         const key = method === 'onNewCalendarEvent' ? 'OnCalendarNewItems' : `O${method.slice(1)}`;
@@ -279,9 +284,9 @@ for (const [appName, expectedNames] of selected) {
 }
 
 if (cwd === path.resolve(root)) {
-    await test('all 43 published typed registrations are covered across the sample apps', () => {
+    await test('all 41 non-deprecated typed registrations are covered across the sample apps', () => {
         assert.equal(publishedApis.size, 43);
-        assert.deepEqual([...coveredApis].sort(), [...publishedApis].sort());
-        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 49);
+        assert.deepEqual([...coveredApis].sort(), [...publishedApis].filter((api) => !deprecatedApis.has(api)).sort());
+        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 47);
     });
 }

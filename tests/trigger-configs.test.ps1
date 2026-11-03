@@ -67,7 +67,6 @@ function Get-TriggerConfigurations {
     }
     $outputs = [pscustomobject] $Values
     $sharepointSiteAddress = 'https://example.sharepoint.com/sites/test'
-    $sharepointFolderId = '/Shared Documents'
     $onedriveFolderId = 'test-folder'
     $triggers = @()
     Invoke-Expression (($statements | ForEach-Object { $_.Extent.Text }) -join "`n") 6>$null
@@ -77,14 +76,14 @@ function Get-TriggerConfigurations {
 $cases = @(
     @{ app = 'office365App'; sdk = 'Office365'; label = 'default'; count = 8; values = @{} },
     @{ app = 'office365App'; sdk = 'Office365'; label = 'shared mailbox'; count = 9; values = @{ OFFICE365_SHARED_MAILBOX_ADDRESS = 'shared@example.com' } },
-    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'default'; count = 2; values = @{} },
-    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'list'; count = 6; values = @{ SHAREPOINT_LIST_ID = 'test-list' } },
-    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'library'; count = 6; values = @{ SHAREPOINT_LIBRARY_ID = 'test-library' } },
-    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'list and library'; count = 10; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_LIBRARY_ID = 'test-library' } },
-    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'form'; count = 7; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_FORM_ID = 'test-form' } },
-    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'digest'; count = 7; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
-    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'all'; count = 12; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_LIBRARY_ID = 'test-library'; SHAREPOINT_FORM_ID = 'test-form'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
-    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'form and digest without list'; count = 2; values = @{ SHAREPOINT_FORM_ID = 'test-form'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
+    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'default'; count = 0; values = @{} },
+    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'list'; count = 4; values = @{ SHAREPOINT_LIST_ID = 'test-list' } },
+    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'library'; count = 4; values = @{ SHAREPOINT_LIBRARY_ID = 'test-library' } },
+    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'list and library'; count = 8; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_LIBRARY_ID = 'test-library' } },
+    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'form'; count = 5; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_FORM_ID = 'test-form' } },
+    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'digest'; count = 5; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
+    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'all'; count = 10; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_LIBRARY_ID = 'test-library'; SHAREPOINT_FORM_ID = 'test-form'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
+    @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'form and digest without list'; count = 0; values = @{ SHAREPOINT_FORM_ID = 'test-form'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
     @{ app = 'onedriveApp'; sdk = 'Onedriveforbusiness'; label = 'metadata'; count = 2; values = @{} }
 )
 
@@ -94,6 +93,9 @@ foreach ($case in $cases) {
     Assert-Condition ($configs.Count -eq $case.count) "$label must configure $($case.count) triggers, not $($configs.Count)."
     $names = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($config in $configs) {
+        if ($case.app -eq 'sharepointApp') {
+            Assert-Condition ($config.operationName -notin @('OnNewFile', 'OnUpdatedFile')) "$label must not configure deprecated file triggers."
+        }
         Assert-Condition ($names.Add($config.functionName)) "$label has a duplicate function name."
         $descriptors = $metadata.operations[$case.sdk][$config.operationName]
         Assert-Condition ($null -ne $descriptors) "$label uses an unknown SDK operation: $($config.operationName)"
