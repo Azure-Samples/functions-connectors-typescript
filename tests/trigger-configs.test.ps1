@@ -74,8 +74,8 @@ function Get-TriggerConfigurations {
 }
 
 $cases = @(
-    @{ app = 'office365App'; sdk = 'Office365'; label = 'default'; count = 8; values = @{} },
-    @{ app = 'office365App'; sdk = 'Office365'; label = 'shared mailbox'; count = 9; values = @{ OFFICE365_SHARED_MAILBOX_ADDRESS = 'shared@example.com' } },
+    @{ app = 'office365App'; sdk = 'Office365'; label = 'default'; count = 7; values = @{} },
+    @{ app = 'office365App'; sdk = 'Office365'; label = 'shared mailbox'; count = 8; values = @{ OFFICE365_SHARED_MAILBOX_ADDRESS = 'shared@example.com' } },
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'default'; count = 0; values = @{} },
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'list'; count = 4; values = @{ SHAREPOINT_LIST_ID = 'test-list' } },
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'library'; count = 4; values = @{ SHAREPOINT_LIBRARY_ID = 'test-library' } },
@@ -91,6 +91,11 @@ foreach ($case in $cases) {
     $configs = @(Get-TriggerConfigurations -App $case.app -Values $case.values)
     $label = "$($case.app): $($case.label)"
     Assert-Condition ($configs.Count -eq $case.count) "$label must configure $($case.count) triggers, not $($configs.Count)."
+    if ($case.app -eq 'office365App') {
+        $calendarConfigs = @($configs | Where-Object { $_.operationName -eq 'CalendarGetOnNewItemsV3' })
+        Assert-Condition ($calendarConfigs.Count -eq 1) "$label must configure exactly one new-calendar subscription."
+        Assert-Condition ($calendarConfigs[0].functionName -eq 'OnCalendarNewItems') "$label must route new calendar events to OnCalendarNewItems."
+    }
     $names = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($config in $configs) {
         if ($case.app -eq 'sharepointApp') {

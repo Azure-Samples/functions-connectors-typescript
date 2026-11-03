@@ -7,14 +7,13 @@ Azure Functions app demonstrating typed Office 365 Outlook triggers from [`@azur
 | [OnNewEmail](src/functions/onNewEmail.ts) | `onNewEmail` | `OnNewEmailV3` |
 | [OnFlaggedEmail](src/functions/onFlaggedEmail.ts) | `onFlaggedEmail` | `OnFlaggedEmailV4` |
 | [OnNewMentionMeEmail](src/functions/onNewMentionMeEmail.ts) | `onNewEmailMentioningMe` | `OnNewMentionMeEmailV3` |
-| [OnNewCalendarEvent](src/functions/onNewCalendarEvent.ts) | `onNewCalendarEvent` | `CalendarGetOnNewItemsV3` |
 | [OnUpcomingEvent](src/functions/onUpcomingEvent.ts) | `onUpcomingEvents` | `OnUpcomingEventsV3` |
 | [OnCalendarNewItems](src/functions/onCalendarNewItems.ts) | `onCalendarNewItems` | `CalendarGetOnNewItemsV3` |
 | [OnCalendarUpdatedItems](src/functions/onCalendarUpdatedItems.ts) | `onCalendarUpdatedItems` | `CalendarGetOnUpdatedItemsV3` |
 | [OnCalendarChangedItems](src/functions/onCalendarChangedItems.ts) | `onCalendarChangedItems` | `CalendarGetOnChangedItemsV3` |
 | [OnSharedMailboxNewEmail](src/functions/onSharedMailboxNewEmail.ts) | `onSharedMailboxNewEmail` | `SharedMailboxOnNewEmailV2` |
 
-All nine exported helpers have examples. `onCalendarNewItems` aliases `onNewCalendarEvent`; the sample registers both, so a new calendar event can reach both functions. Choose one subscription for that operation in production. Changed-calendar events use `CalendarChangedEventTriggerContext` and the SDK's case-sensitive `ActionType` field.
+The [Connector Namespaces portal](https://connectors.azure.com/) also lists **When a new email arrives (webhook)** (`CreateOnNewEmailSubscription`). That operation is deprecated, so this project does not include function code or a subscription for it. Use **When a new email arrives (V3)** (`OnNewEmailV3`), demonstrated by [OnNewEmail](src/functions/onNewEmail.ts), instead.
 
 > These handlers log email and calendar metadata. Use a test account and avoid sensitive data.
 
@@ -32,7 +31,7 @@ azd auth login
 azd up
 ```
 
-The deployment builds the TypeScript app and runs the [postdeploy hook](azure.yaml). Complete the OAuth consent flow in your browser when prompted. Both platform hooks wait for the connection to become `Connected`, then create eight trigger configurations, or nine when a shared mailbox is configured.
+The deployment builds the TypeScript app and runs the [postdeploy hook](azure.yaml). Complete the OAuth consent flow in your browser when prompted. Both platform hooks wait for the connection to become `Connected`, then create seven trigger configurations, or eight when a shared mailbox is configured.
 
 ## Resources provisioned
 
@@ -58,7 +57,7 @@ azd hooks run postdeploy
 
 ## Verify
 
-Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Office 365 Outlook connection in `Connected` state and eight triggers in `Enabled` state, or nine with the shared mailbox setting. The [historical namespace overview](docs/connector-namespace-overview-office365.png) predates the additional examples.
+Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Office 365 Outlook connection in `Connected` state and seven triggers in `Enabled` state, or eight with the shared mailbox setting. The [historical namespace overview](docs/connector-namespace-overview-office365.png) predates the additional examples.
 
 Send an email to the connected account or create a calendar event, then inspect the Function App logs in Application Insights. If the connection is unauthenticated or triggers are missing, rerun the hook and complete consent.
 

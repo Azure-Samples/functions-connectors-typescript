@@ -14,7 +14,7 @@ const samples = {
     dataflowsApp: ['OnDataflowRefreshComplete'],
     genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
     kustoApp: ['OnKustoQueryResult'],
-    office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewCalendarEvent', 'OnNewEmail', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
+    office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
     onedriveApp: ['OnOneDriveNewFile', 'OnOneDriveUpdatedFile'],
     plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
     salesforceApp: ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
@@ -50,7 +50,7 @@ const dependencies = {
 const appsWithHooks = new Set(['office365App', 'onedriveApp', 'sharepointApp', 'teamsApp']);
 const publishedApis = new Set();
 const coveredApis = new Set();
-const deprecatedApis = new Set(['sharepoint.onNewFile', 'sharepoint.onUpdatedFile']);
+const excludedApis = new Set(['sharepoint.onNewFile', 'sharepoint.onUpdatedFile', 'office365.onNewCalendarEvent']);
 
 function itemFor(appName, name, index) {
     const marker = `sample-item-${index}`;
@@ -191,13 +191,13 @@ for (const [appName, expectedNames] of selected) {
             assert.deepEqual([...registrations.keys()].sort(), [...expectedNames].sort());
         });
 
-        await t.test('every non-deprecated public helper for this connector is exercised', () => {
+        await t.test('every public helper except deprecated operations and duplicate aliases is exercised', () => {
             const connector = connectorSamples[appName];
             const expected = connector
                 ? Object.entries(originalNamespaces.get(connector.namespace))
                     .filter(([, register]) => typeof register === 'function')
                     .map(([method]) => `${connector.namespace}.${method}`)
-                    .filter((api) => !deprecatedApis.has(api))
+                    .filter((api) => !excludedApis.has(api))
                 : [];
             assert.deepEqual([...apiCalls.values()].sort(), expected.sort());
             assert.equal(apiCalls.size, connector ? expectedNames.length : 0);
@@ -213,9 +213,13 @@ for (const [appName, expectedNames] of selected) {
                     if (appName === 'sharepointApp') {
                         assert.doesNotMatch(hook, /\bOnSharepoint(?:New|Updated)File\b|\bSHAREPOINT_FOLDER_ID\b/);
                     }
+                    if (appName === 'office365App') {
+                        assert.doesNotMatch(hook, /\bOnNewCalendarEvent\b|\bCreateOnNewEmailSubscription\b/);
+                        assert.equal(hook.match(/\bCalendarGetOnNewItemsV3\b/g)?.length, 1, 'Create only one new-calendar subscription.');
+                    }
                     for (const [name, api] of apiCalls) {
                         const method = api.split('.')[1];
-                        const key = method === 'onNewCalendarEvent' ? 'OnCalendarNewItems' : `O${method.slice(1)}`;
+                        const key = `O${method.slice(1)}`;
                         const operation = operations[key];
                         assert.equal(typeof operation, 'string', `Missing SDK operation for ${api}.`);
                         const matches = suffix === 'ps1'
@@ -284,9 +288,9 @@ for (const [appName, expectedNames] of selected) {
 }
 
 if (cwd === path.resolve(root)) {
-    await test('all 41 non-deprecated typed registrations are covered across the sample apps', () => {
+    await test('all 40 non-deprecated, non-duplicate typed registrations are covered across the sample apps', () => {
         assert.equal(publishedApis.size, 43);
-        assert.deepEqual([...coveredApis].sort(), [...publishedApis].filter((api) => !deprecatedApis.has(api)).sort());
-        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 47);
+        assert.deepEqual([...coveredApis].sort(), [...publishedApis].filter((api) => !excludedApis.has(api)).sort());
+        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 46);
     });
 }

@@ -48,7 +48,6 @@ $triggers = @(
     @{ functionName = 'OnNewEmail';          operationName = 'OnNewEmailV3';            parameters = @(@{ name = 'folderPath'; value = 'Inbox' }) },
     @{ functionName = 'OnFlaggedEmail';      operationName = 'OnFlaggedEmailV4';        parameters = @(@{ name = 'folderPath'; value = 'Inbox' }) },
     @{ functionName = 'OnNewMentionMeEmail'; operationName = 'OnNewMentionMeEmailV3';   parameters = @(@{ name = 'folderPath'; value = 'Inbox' }) },
-    @{ functionName = 'OnNewCalendarEvent';  operationName = 'CalendarGetOnNewItemsV3'; parameters = @(@{ name = 'table'; value = 'Calendar' }) },
     @{ functionName = 'OnUpcomingEvent';     operationName = 'OnUpcomingEventsV3';      parameters = @(@{ name = 'table'; value = 'Calendar' }, @{ name = 'lookAheadTimeInMinutes'; value = 15 }) },
     @{ functionName = 'OnCalendarNewItems';  operationName = 'CalendarGetOnNewItemsV3'; parameters = @(@{ name = 'table'; value = 'Calendar' }) },
     @{ functionName = 'OnCalendarUpdatedItems'; operationName = 'CalendarGetOnUpdatedItemsV3'; parameters = @(@{ name = 'table'; value = 'Calendar' }) },

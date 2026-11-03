@@ -139,7 +139,6 @@ triggers=(
     "OnNewEmail|OnNewEmailV3|[{\"name\":\"folderPath\",\"value\":\"Inbox\"}]"
     "OnFlaggedEmail|OnFlaggedEmailV4|[{\"name\":\"folderPath\",\"value\":\"Inbox\"}]"
     "OnNewMentionMeEmail|OnNewMentionMeEmailV3|[{\"name\":\"folderPath\",\"value\":\"Inbox\"}]"
-    "OnNewCalendarEvent|CalendarGetOnNewItemsV3|[{\"name\":\"table\",\"value\":\"Calendar\"}]"
     "OnUpcomingEvent|OnUpcomingEventsV3|[{\"name\":\"table\",\"value\":\"Calendar\"},{\"name\":\"lookAheadTimeInMinutes\",\"value\":15}]"
     "OnCalendarNewItems|CalendarGetOnNewItemsV3|[{\"name\":\"table\",\"value\":\"Calendar\"}]"
     "OnCalendarUpdatedItems|CalendarGetOnUpdatedItemsV3|[{\"name\":\"table\",\"value\":\"Calendar\"}]"
