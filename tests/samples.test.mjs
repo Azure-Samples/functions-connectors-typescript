@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 import assert from 'node:assert/strict';
-import { readdir, readFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -150,6 +151,12 @@ for (const [appName, expectedNames] of selected) {
             const projectName = azureYaml.match(/^name:\s*(\S+)\s*$/m)?.[1];
             assert.ok(projectName && projectName.length >= 2, 'The azd project must have a name.');
             assert.match(projectName, /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/, 'The azd schema requires a lowercase project-name slug.');
+            if (appsWithHooks.has(appName) && process.platform !== 'win32') {
+                await assert.doesNotReject(
+                    access(path.join(appRoot, 'infra/scripts/postdeploy.sh'), constants.X_OK),
+                    'The POSIX postdeploy hook must be executable because azd invokes it directly.',
+                );
+            }
             const ignored = (await readFile(path.join(appRoot, '.funcignore'), 'utf8')).split(/\r?\n/);
             for (const entry of ['.azure/', 'local.settings.json', '__azurite_db_*.json', '__blobstorage__/', '__queuestorage__/']) {
                 assert.ok(ignored.includes(entry), `Deployment packages must exclude ${entry}.`);
