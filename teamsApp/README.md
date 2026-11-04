@@ -1,6 +1,6 @@
 # Microsoft Teams Connector Sample
 
-Azure Functions app demonstrating all eleven Microsoft Teams portal triggers. Four use named helpers from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors); seven use its generic `connectorTrigger<T>` API with SDK response types or dynamic records. Handlers are in [src/functions](src/functions/).
+Azure Functions app demonstrating all Microsoft Teams triggers. Some triggers have named helpers in [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors); others do not. Use a named helper when available; otherwise, use the generic `connectorTrigger<T>` API. Handlers are in [src/functions](src/functions/).
 
 | Function | Registration API | Connector operation |
 | -------- | ------------------------------ | ------------------- |
@@ -15,12 +15,6 @@ Azure Functions app demonstrating all eleven Microsoft Teams portal triggers. Fo
 | [OnWebhookChatMessage](src/functions/onWebhookChatMessage.ts) | `connectorTrigger<T>` | `WebhookChatMessageTrigger` |
 | [OnWebhookKeyword](src/functions/onWebhookKeyword.ts) | `connectorTrigger<T>` | `WebhookKeywordTrigger` |
 | [OnWebhookNewMessage](src/functions/onWebhookNewMessage.ts) | `connectorTrigger<T>` | `WebhookNewMessageTrigger` |
-
-The four named helpers do not cover all portal operations. In particular, **When I'm @mentioned** (`WebhookAtMentionTrigger`) is distinct from **When I am mentioned in a channel message** (`OnNewChannelMessageMentioningMe`), not an alias.
-
-Membership contexts are `TeamMemberTriggerContext`; `members` remains `Record<string, unknown>[]`. New webhook handlers preserve the original callback payload and log whole records without assuming a schema for dynamic events. Transcript and recording callbacks describe available artifacts; these handlers do not download them.
-
-Use a test account and non-sensitive messages and meetings: these examples log event records, which can include message content, identities, or artifact URLs.
 
 ## Prerequisites
 
