@@ -27,7 +27,7 @@ if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $teamsConn
 }
 
 # --- Required Teams identifiers --------------------------------------------
-# All Microsoft Teams triggers used in this app are scoped to a specific team
+# The original Microsoft Teams triggers in this app are scoped to a specific team
 # (and most also to a specific channel). These IDs cannot be inferred at
 # provisioning time, so we either read them from azd env vars or prompt
 # the user to pick a team / channel via Microsoft Graph.
@@ -276,6 +276,16 @@ if (-not $authorized) {
     exit 1
 }
 
+# --- Configure additional Teams webhook triggers after OAuth ----------------
+$webhookConfigs = [System.IO.Path]::GetTempFileName()
+try {
+    & node (Join-Path $PSScriptRoot 'setup-webhook-triggers.mjs') $resourceGroupName $connectorNamespaceName $teamsConnectionName $webhookConfigs
+    if ($LASTEXITCODE -ne 0) { throw "Teams webhook setup failed. No trigger configurations were created; rerun the hook to retry or skip a webhook." }
+    $triggers += @(Get-Content $webhookConfigs -Raw | ConvertFrom-Json -AsHashtable)
+} finally {
+    Remove-Item $webhookConfigs -ErrorAction SilentlyContinue
+}
+
 # --- Create Connector Namespace trigger configs -----------------------------
 Write-Host ""
 Write-Host "Fetching connector extension key for $functionAppName..." -ForegroundColor Cyan
@@ -303,7 +313,7 @@ foreach ($t in $triggers) {
     if ($t.parameters.Count -eq 0) {
         $parameters = '[]'
     } else {
-        $parameters = ($t.parameters | ConvertTo-Json -Compress -Depth 5 -AsArray)
+        $parameters = ($t.parameters | ConvertTo-Json -Compress -Depth 20 -AsArray)
     }
 
     $triggerName = "$teamsConnectionName-$($functionName.ToLower())"

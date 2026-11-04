@@ -252,6 +252,13 @@ if ! authorize_connection "${teamsConnectionName}" "Microsoft Teams"; then
     exit 1
 fi
 
+# --- Configure additional Teams webhook triggers after OAuth ----------------
+webhookConfigs=$(mktemp)
+parametersFile=""
+trap 'rm -f "$webhookConfigs" "$parametersFile"' EXIT
+scriptDirectory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+node "$scriptDirectory/setup-webhook-triggers.mjs" "$resourceGroupName" "$connectorNamespaceName" "$teamsConnectionName" "$webhookConfigs"
+
 # --- Create Connector Namespace trigger configs -----------------------------
 echo ""
 echo -e "${CYAN}Fetching connector extension key for ${functionAppName}...${NC}"
@@ -272,6 +279,10 @@ triggers=(
     "OnGroupMembershipRemoval|OnGroupMembershipRemoval|$(jq -nc --arg g "$teamsGroupId" '[{name:"groupId",value:$g}]')"
 )
 
+while IFS= read -r entry; do
+    triggers+=("$entry")
+done < <(jq -r '.[] | "\(.functionName)|\(.operationName)|\(.parameters | tojson)"' "$webhookConfigs")
+
 triggerFailures=()
 for entry in "${triggers[@]}"; do
     IFS='|' read -r functionName operationName parameters <<< "$entry"
@@ -287,19 +298,22 @@ for entry in "${triggers[@]}"; do
         -g "${resourceGroupName}" --namespace "${connectorNamespaceName}" \
         -n "${triggerName}" --yes 2>/dev/null || true
 
+    parametersFile=$(mktemp)
+    printf '%s' "$parameters" > "$parametersFile"
     if ! az connector-namespace trigger create \
         -g "${resourceGroupName}" \
         --namespace "${connectorNamespaceName}" \
         -n "${triggerName}" \
         --connection-details "${connectionDetails}" \
         --operation-name "${operationName}" \
-        --parameters "${parameters}" \
+        --parameters "@${parametersFile}" \
         --notification-details "${notificationDetails}" \
         --state "Enabled" \
         --description "Teams ${operationName} -> ${functionName}"; then
         echo -e "${YELLOW}WARNING: Failed to create trigger '${triggerName}'. Continuing.${NC}"
         triggerFailures+=("${triggerName}")
     fi
+    rm -f "$parametersFile"
 done
 
 echo ""
