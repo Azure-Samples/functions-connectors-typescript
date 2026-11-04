@@ -27,10 +27,11 @@ The suite checks:
 - Every manifest, lockfile, and installed package uses the requested `@azure/connectors@0.3.1-preview`, `@azure/functions@^4.17.0`, and `@azure/functions-extensions-connectors@0.1.0-preview` releases, plus CommonJS and ESM SDK entry-point loading.
 - The extension and app resolve the same SDK installation, and host/deployment runtime settings match Node.js 24.
 - All azd project names use schema-compliant lowercase slugs, and deployment ignore files protect local settings, azd state, and Azurite data.
-- All 48 expected sample functions register through the connector extension or raw host API.
+- All 55 expected sample functions register through the connector extension or raw host API.
 - The samples actually call all 40 non-deprecated, non-duplicate public typed registration helpers, including the Kusto callback helper. The expected API list is discovered from the installed extension, excluding the two deprecated SharePoint file helpers and the duplicate Office 365 calendar alias, not inferred from handler names.
 - Both platform hooks for Office 365, OneDrive for Business, SharePoint, and Teams map registered function names to operation IDs from the installed SDK.
 - Both Office 365 hooks subscribe only one function to the new-calendar operation and omit the deprecated webhook email operation.
+- Both Teams hooks use the shared authenticated setup for seven additional operations from the installed SDK.
 - Eight payload scenarios per normalized handler: object and JSON batches, object and JSON single items, empty batches, missing bodies, null payloads, and malformed JSON.
 - Eight opaque-content scenarios per raw OneDrive content handler cover binary buffers, binary/text envelopes, JSON envelopes, raw text, JSON file contents, empty content, and null payloads; payload identity is preserved and file contents are never logged.
 - Additional flat-record batch and single-item scenarios for all ten dynamic SharePoint and Salesforce handlers; logging must not depend on a generated `dynamicProperties` wrapper being present.
@@ -38,7 +39,9 @@ The suite checks:
 
 Host registration is intercepted and public helper calls are observed, but the real connector extension's normalization and typed-context wrappers still execute. These offline tests do not load local settings, need credentials, start a Functions host, call connector services, or provision resources. They do not replace end-to-end validation with authorized connections and live events.
 
-The complete Node suite contains 464 checks, including 404 handler payload scenarios.
+The shared sample smoke suite contains 520 checks, including 460 handler payload scenarios.
+
+`npm test` in `teamsApp` also runs [teams-setup.test.mjs](teams-setup.test.mjs). These offline tests exercise all three transcript/recording scopes, dynamic team/channel/chat/meeting pickers, selected-ID dependencies, free-form keyword/reaction inputs, nested `body` parameters, callback-URL omission, explicit skips, lookup failures, and setup ordering in both hooks. Dynamic request schemas are synthetic fixtures, not a claim about a tenant's live schema. No Azure operations run during these tests.
 
 ## Deployment configuration tests
 
@@ -48,7 +51,7 @@ Run the dependency-free PowerShell test runner after installing the sample depen
 pwsh -File .\tests\trigger-configs.test.ps1
 ```
 
-[trigger-configs.test.ps1](trigger-configs.test.ps1) isolates the hooks' trigger-array assignments and optional-setting branches without executing consent, CLI operations, or interactive setup. It checks eleven configuration scenarios against the SDK's required parameter names and value types, including all four OneDrive content/metadata operations using the selected folder, plus successful root/paged OneDrive folder traversal and explicit invalid-listing errors. Folder paths are compared with the actual SDK route construction, with requests and authentication disabled.
+[trigger-configs.test.ps1](trigger-configs.test.ps1) isolates the hooks' trigger-array assignments and optional-setting branches without executing consent, CLI operations, or interactive setup. It checks twelve configuration scenarios against the SDK's required parameter names and value types, including all four OneDrive content/metadata operations using the selected folder and the original four Teams configurations before interactive setup, plus successful root/paged OneDrive folder traversal and explicit invalid-listing errors. Folder paths are compared with the actual SDK route construction, with requests and authentication disabled.
 
 Connector-specific dynamic values, OAuth permissions, and live callback delivery still require authorized end-to-end testing.
 

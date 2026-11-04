@@ -22,10 +22,11 @@ $metadataScript = @'
 import * as office365 from '@azure/connectors/generated/Office365Extensions';
 import * as sharepoint from '@azure/connectors/generated/SharepointonlineExtensions';
 import * as onedrive from '@azure/connectors/generated/OnedriveforbusinessExtensions';
+import * as teams from '@azure/connectors/generated/TeamsExtensions';
 const metadata = { operations: {}, folderPaths: {} };
-for (const [prefix, sdk] of [['Office365', office365], ['Sharepointonline', sharepoint], ['Onedriveforbusiness', onedrive]]) {
+for (const [prefix, sdk] of [['Office365', office365], ['Sharepointonline', sharepoint], ['Onedriveforbusiness', onedrive], ['Teams', teams]]) {
     metadata.operations[prefix] = Object.fromEntries(Object.entries(sdk[`${prefix}TriggerOperations`]).map(([key, operation]) => [
-        operation, Object.values(sdk[`${prefix}TriggerParameters`][key]).map(({ name, type, required }) => ({ name, type, required })),
+        operation, Object.values(sdk[`${prefix}TriggerParameters`][key] ?? {}).map(({ name, type, required }) => ({ name, type, required })),
     ]));
 }
 const client = new onedrive.OnedriveforbusinessClient('https://example.azureconnectors.com', {
@@ -68,6 +69,8 @@ function Get-TriggerConfigurations {
     $outputs = [pscustomobject] $Values
     $sharepointSiteAddress = 'https://example.sharepoint.com/sites/test'
     $onedriveFolderId = 'test-folder'
+    $teamsGroupId = 'test-team'
+    $teamsChannelId = 'test-channel'
     $triggers = @()
     Invoke-Expression (($statements | ForEach-Object { $_.Extent.Text }) -join "`n") 6>$null
     return $triggers
@@ -84,7 +87,8 @@ $cases = @(
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'digest'; count = 5; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'all'; count = 10; values = @{ SHAREPOINT_LIST_ID = 'test-list'; SHAREPOINT_LIBRARY_ID = 'test-library'; SHAREPOINT_FORM_ID = 'test-form'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
     @{ app = 'sharepointApp'; sdk = 'Sharepointonline'; label = 'form and digest without list'; count = 0; values = @{ SHAREPOINT_FORM_ID = 'test-form'; SHAREPOINT_DIGEST_SCHEDULE = 'test-schedule' } },
-    @{ app = 'onedriveApp'; sdk = 'Onedriveforbusiness'; label = 'content and metadata'; count = 4; values = @{} }
+    @{ app = 'onedriveApp'; sdk = 'Onedriveforbusiness'; label = 'content and metadata'; count = 4; values = @{} },
+    @{ app = 'teamsApp'; sdk = 'Teams'; label = 'original triggers before interactive webhook setup'; count = 4; values = @{} }
 )
 
 foreach ($case in $cases) {

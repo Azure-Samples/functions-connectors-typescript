@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
+import { webhookTriggers } from '../teamsApp/infra/scripts/setup-webhook-triggers.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const samples = {
@@ -24,7 +25,11 @@ const samples = {
         'OnSharepointNewItemsFromForm', 'OnSharepointRecurrenceDigest',
         'OnSharepointUpdatedFileClassifiedTimes', 'OnSharepointUpdatedFileItems', 'OnSharepointUpdatedItems',
     ],
-    teamsApp: ['OnGroupMembershipAdd', 'OnGroupMembershipRemoval', 'OnNewChannelMessage', 'OnNewChannelMessageMentioningMe'],
+    teamsApp: [
+        'OnGroupMembershipAdd', 'OnGroupMembershipRemoval', 'OnNewChannelMessage', 'OnNewChannelMessageMentioningMe',
+        'OnWebhookAtMention', 'OnWebhookMessageReaction', 'OnTranscriptAvailable', 'OnRecordingAvailable',
+        'OnWebhookChatMessage', 'OnWebhookKeyword', 'OnWebhookNewMessage',
+    ],
     vstsApp: [
         'OnVstsBuildCompleted', 'OnVstsGitPullClosed', 'OnVstsGitPullCreated', 'OnVstsGitPush',
         'OnVstsTfvcCheckIn', 'OnVstsWorkItemAssigned', 'OnVstsWorkItemClosed',
@@ -58,6 +63,13 @@ const oneDriveContentOperations = {
 
 function itemFor(appName, name, index) {
     const marker = `sample-item-${index}`;
+    if (appName === 'teamsApp' && webhookTriggers.some((trigger) => trigger.functionName === name)) {
+        if (name === 'OnWebhookChatMessage') return { messageId: marker, conversationId: 'test-chat' };
+        if (name === 'OnWebhookMessageReaction') return { messageId: marker, messageReaction: 'test-reaction', threadType: 'groupchat' };
+        if (name === 'OnTranscriptAvailable') return { id: marker, meetingId: 'test-meeting', transcriptContentUrl: 'https://example.com/transcript' };
+        if (name === 'OnRecordingAvailable') return { id: marker, meetingId: 'test-meeting', recordingContentUrl: 'https://example.com/recording' };
+        return { eventId: marker, message: { arbitraryField: marker } };
+    }
     if (/Email|Calendar|Upcoming/.test(name)) {
         return { id: marker, subject: marker, from: 'sender@example.com', importance: 'normal', hasAttachments: false, organizer: 'organizer@example.com', start: '2026-10-23T10:00:00Z', end: '2026-10-23T11:00:00Z', ActionType: 'updated', IsUpdated: true };
     }
@@ -204,8 +216,9 @@ for (const [appName, expectedNames] of selected) {
                     .filter((api) => !excludedApis.has(api))
                 : [];
             assert.deepEqual([...apiCalls.values()].sort(), expected.sort());
-            const rawCount = appName === 'onedriveApp' ? Object.keys(oneDriveContentOperations).length : 0;
-            assert.equal(apiCalls.size, connector ? expectedNames.length - rawCount : 0);
+            const nonHelperCount = appName === 'onedriveApp' ? Object.keys(oneDriveContentOperations).length
+                : appName === 'teamsApp' ? webhookTriggers.length : 0;
+            assert.equal(apiCalls.size, connector ? expectedNames.length - nonHelperCount : 0);
         });
 
         if (appsWithHooks.has(appName)) {
@@ -219,6 +232,12 @@ for (const [appName, expectedNames] of selected) {
                         operationKeys.set(name, key);
                     }
                 }
+                if (appName === 'teamsApp') {
+                    for (const trigger of webhookTriggers) {
+                        operationKeys.set(trigger.functionName, Object.keys(operations).find((key) => operations[key] === trigger.operationName));
+                    }
+                }
+                assert.equal(operationKeys.size, expectedNames.length, 'Every registered function must have a deployment mapping.');
                 for (const suffix of ['ps1', 'sh']) {
                     const hook = await readFile(path.join(appRoot, 'infra/scripts', `postdeploy.${suffix}`), 'utf8');
                     if (appName === 'sharepointApp') {
@@ -231,7 +250,9 @@ for (const [appName, expectedNames] of selected) {
                     for (const [name, key] of operationKeys) {
                         const operation = operations[key];
                         assert.equal(typeof operation, 'string', `Missing SDK operation for ${name}.`);
-                        const matches = suffix === 'ps1'
+                        const matches = appName === 'teamsApp' && webhookTriggers.some((trigger) => trigger.functionName === name)
+                            ? hook.includes('setup-webhook-triggers.mjs')
+                            : suffix === 'ps1'
                             ? new RegExp(`functionName = '${name}';\\s+operationName = '${operation}'`).test(hook)
                             : hook.includes(`${name}|${operation}|`);
                         assert.ok(matches, `${suffix} hook must route ${name} to ${operation}.`);
@@ -325,6 +346,6 @@ if (cwd === path.resolve(root)) {
     await test('all 40 non-deprecated, non-duplicate typed registrations are covered across the sample apps', () => {
         assert.equal(publishedApis.size, 43);
         assert.deepEqual([...coveredApis].sort(), [...publishedApis].filter((api) => !excludedApis.has(api)).sort());
-        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 48);
+        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 55);
     });
 }
