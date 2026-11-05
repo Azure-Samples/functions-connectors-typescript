@@ -133,6 +133,62 @@ await test('chat pickers keep selected IDs as arrays, not labels or scalar strin
     assert.deepEqual(mention.parameters.find((item) => item.name === 'body').value, { chatIds: ['ListChats/selected-id'] });
 });
 
+for (const legacyValues of [true, false]) {
+    await test(`channel picker collects its optional team prerequisite first (${legacyValues ? 'dynamic-values' : 'dynamic-list'})`, async () => {
+        const input = answersFor('user');
+        const invoke = input.invoke;
+        const calls = [];
+        input.invoke = async (id, values) => {
+            if (id === 'GetThread') return { schema: {
+                type: 'object', required: ['notificationUrl', 'channels'],
+                properties: {
+                    channels: {
+                        type: 'array', minItems: 1, maxItems: 10, 'x-ms-summary': 'Channels',
+                        items: {
+                            type: 'string',
+                            'x-ms-dynamic-list': {
+                                operationId: 'GetChannelsForGroup', itemsPath: 'value',
+                                itemValuePath: 'id', itemTitlePath: 'displayName',
+                                parameters: { groupId: { parameterReference: 'requestBody/groupId', required: true } },
+                            },
+                            ...(legacyValues ? { 'x-ms-dynamic-values': {
+                                operationId: 'GetChannelsForGroup', 'value-collection': 'value',
+                                'value-path': 'id', 'value-title': 'displayName',
+                                parameters: { groupId: { parameter: 'groupId' } },
+                            } } : {}),
+                        },
+                    },
+                    groupId: {
+                        type: 'string', title: 'Team',
+                        'x-ms-dynamic-list': {
+                            operationId: 'GetAllTeams', itemsPath: 'value',
+                            itemValuePath: 'id', itemTitlePath: 'displayName',
+                        },
+                    },
+                    notificationUrl: { type: 'string', 'x-ms-notification-url': true, 'x-ms-visibility': 'internal' },
+                },
+            } };
+            if (id === 'GetAllTeams' || id === 'GetChannelsForGroup') {
+                calls.push({ id, values });
+                if (id === 'GetChannelsForGroup') assert.deepEqual(values, { groupId: 'selected-team' });
+                return { value: [{ id: id === 'GetAllTeams' ? 'selected-team' : 'selected-channel', displayName: 'Picker label' }] };
+            }
+            return invoke(id, values);
+        };
+        const configs = await collectWebhookTriggers({ swagger: fixture(), ...input });
+        const channelConfigs = configs.filter((config) => config.parameters.some((parameter) => parameter.name === 'threadType'));
+        assert.equal(channelConfigs.length, 4);
+        for (const config of channelConfigs) {
+            assert.deepEqual(config.parameters.find((parameter) => parameter.name === 'body').value, {
+                groupId: 'selected-team', channels: ['selected-channel'],
+            });
+        }
+        assert.deepEqual(calls.map((call) => call.id), Array(4).fill(['GetAllTeams', 'GetChannelsForGroup']).flat());
+        assert.ok(!input.menus.some((menu) => menu.label === 'Configure Team (optional)?'),
+            'A field needed by the channel picker cannot be skipped.');
+    });
+}
+
 await test('skipping the seven new triggers does not resolve schemas or require their inputs', async () => {
     const configs = await collectWebhookTriggers({
         swagger: { paths: {} }, choose: async () => false, log: () => {},

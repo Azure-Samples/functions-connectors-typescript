@@ -74,6 +74,21 @@ export async function collectWebhookTriggers({ swagger, invoke, choose, prompt, 
         return extension.operationId ? extension : { ...extension, ...(extension.dynamicState?.extension ?? extension.dynamicState) };
     }
 
+    function references(input) {
+        const schema = resolve(swagger, input);
+        const result = [];
+        for (const name of ['x-ms-dynamic-schema', 'x-ms-dynamic-values', 'x-ms-dynamic-list']) {
+            if (!schema[name]) continue;
+            for (const binding of Object.values(dynamicSpec(schema[name]).parameters ?? {})) {
+                const reference = binding?.parameter ?? binding?.parameterReference;
+                if (reference) result.push(reference);
+            }
+        }
+        if (schema.items) result.push(...references(schema.items));
+        for (const property of Object.values(schema.properties ?? {})) result.push(...references(property));
+        return result;
+    }
+
     async function dynamic(extension, answers) {
         extension = dynamicSpec(extension);
         if (!extension?.operationId) throw new Error('The connector picker has no operation ID.');
@@ -147,8 +162,23 @@ export async function collectWebhookTriggers({ swagger, invoke, choose, prompt, 
             let parent = answers;
             for (const key of keyPath.slice(0, -1)) parent = parent[key] ??= {};
             parent[keyPath.at(-1)] = result;
-            for (const [key, property] of Object.entries(schema.properties ?? {})) {
-                const field = resolve(swagger, property);
+            const properties = schema.properties ?? {};
+            const dependencies = new Map(Object.entries(properties).map(([key, property]) => [
+                key, new Set(references(property).flatMap((reference) => {
+                    const parts = reference.split(/[/.]/).filter(Boolean);
+                    const index = parts.findIndex((part, i) => Object.hasOwn(properties, part)
+                        && (i === 0 || get(answers, parts.slice(0, i).join('/')) === result));
+                    return index < 0 || parts[index] === key ? [] : [parts[index]];
+                })),
+            ]));
+            const prerequisites = new Set([...dependencies.values()].flatMap((keys) => [...keys]));
+            const remaining = new Set(Object.keys(properties));
+            // Picker prerequisites may be listed later and omitted from schema.required.
+            while (remaining.size) {
+                const key = [...remaining].find((name) => [...dependencies.get(name)].every((dependency) => !remaining.has(dependency)));
+                if (key === undefined) throw new Error(`Cyclic picker dependencies for ${label}.`);
+                remaining.delete(key);
+                const field = resolve(swagger, properties[key]);
                 // Connector Namespace supplies its subscription callback, not the Function App URL.
                 if (field['x-ms-notification-url'] || field.readOnly) continue;
                 if (field['x-ms-visibility'] === 'internal') {
@@ -156,7 +186,7 @@ export async function collectWebhookTriggers({ swagger, invoke, choose, prompt, 
                     continue;
                 }
                 const value = await collect(field, field['x-ms-summary'] ?? field.title ?? key, answers,
-                    [...keyPath, key], schema.required?.includes(key) || field.required === true);
+                    [...keyPath, key], prerequisites.has(key) || schema.required?.includes(key) || field.required === true);
                 if (value !== undefined) result[key] = value;
             }
             return result;
@@ -177,15 +207,20 @@ export async function collectWebhookTriggers({ swagger, invoke, choose, prompt, 
             log(`Skipped ${trigger.operationName}; its function still registers.`);
             continue;
         }
+        const operationParameters = operation(swagger, trigger.operationName).parameters;
+        const body = operationParameters.find((parameter) => parameter.in === 'body');
         const answers = {};
+        if (body && body.name !== 'body') {
+            // Swagger references use the original body name; trigger configurations use "body".
+            Object.defineProperty(answers, body.name, { get: () => answers.body });
+        }
         const parameters = [];
-        for (const parameter of operation(swagger, trigger.operationName).parameters) {
+        for (const parameter of operationParameters) {
             if (parameter.in === 'body' || parameter.name === 'connectionId' || !parameter.required) continue;
             const value = await collect(parameter, parameter['x-ms-summary'] ?? parameter.name, answers, [parameter.name]);
             answers[parameter.name] = value;
             parameters.push({ name: parameter.name, value });
         }
-        const body = operation(swagger, trigger.operationName).parameters.find((parameter) => parameter.in === 'body');
         if (body) {
             const value = await collect(body.schema, 'Subscription details', answers, ['body']);
             if (Object.keys(value).length) parameters.push({ name: 'body', value });
