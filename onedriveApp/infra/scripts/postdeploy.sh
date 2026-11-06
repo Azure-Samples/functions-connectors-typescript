@@ -270,7 +270,7 @@ urlencode() {
 connection_invoke() {
     local path="$1" method="${2:-get}"
     local reqFile
-    reqFile=$(mktemp --suffix=.json)
+    reqFile=$(mktemp) || return 1
     jq -nc --arg m "$method" --arg p "$path" '{method:$m, path:$p}' > "$reqFile"
     local raw
     raw=$(az connector-namespace connection invoke \

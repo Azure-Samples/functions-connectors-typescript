@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, readdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -228,6 +229,61 @@ for (const [appName, expectedNames] of selected) {
             assert.equal(apiCalls.size, connector ? expectedNames.length - nonHelperCount : 0);
         });
 
+        if (['azureblobApp', 'onedriveApp'].includes(appName) && process.platform !== 'win32') {
+            await t.test('request builders use portable temporary files and stop if creation fails', async () => {
+                const hook = await readFile(path.join(appRoot, 'infra/scripts/postdeploy.sh'), 'utf8');
+                const builders = appName === 'azureblobApp'
+                    ? [
+                        ['set_connection_keybased_auth', "'testaccount' 'test-key'", { location: 'test', properties: { connectorName: 'azureblob', parameterValueSet: { name: 'keyBasedAuth', values: { accountName: { value: 'testaccount' }, accessKey: { value: 'test-key' } } } } }],
+                        ['set_connection_access_policy', "'test-policy' 'test-principal'", { properties: { principal: { type: 'ActiveDirectory', identity: { objectId: 'test-principal', tenantId: 'test' } } } }],
+                    ]
+                    : [['connection_invoke', "'/datasets/default/folders' 'get'", { method: 'get', path: '/datasets/default/folders' }]];
+                for (const [name, args, expected] of builders) {
+                    const definition = hook.match(new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`, 'm'))?.[0];
+                    assert.ok(definition, `Find ${name} without running the full hook.`);
+                    for (const fail of [false, true]) {
+                        const mocks = `
+mktemp() {
+    if [[ $# -ne 0 || '${fail}' == true ]]; then
+        echo 'TEST: temporary file creation failed' >&2
+        return 1
+    fi
+    local file
+    file=$(command mktemp) || return 1
+    echo "TEST: temporary file $file" >&2
+    printf '%s\\n' "$file"
+}
+az() {
+    echo 'TEST: Azure request' >&3
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == --body || "$1" == --request ]]; then
+            jq -c . "\${2#@}" >&3 || return 1
+            echo '{"response":{"statusCode":"OK","body":[]}}'
+            return 0
+        fi
+        shift
+    done
+    return 1
+}
+azureLocation=test
+tenantId=test`;
+                        const result = spawnSync('bash', ['-c', `exec 3>&2\n${mocks}\n${definition}\n${name} ${args}`], { encoding: 'utf8', timeout: 5000 });
+                        assert.ifError(result.error);
+                        assert.equal(result.status, fail ? 1 : 0, result.stderr);
+                        if (fail) {
+                            assert.doesNotMatch(result.stderr, /TEST: Azure request/);
+                        } else {
+                            assert.match(result.stderr, /TEST: Azure request/);
+                            const payload = result.stderr.split('\n').find((line) => line.startsWith('{'));
+                            assert.deepEqual(JSON.parse(payload), expected);
+                            const file = result.stderr.match(/TEST: temporary file (.+)/)?.[1];
+                            assert.ok(file);
+                            await assert.rejects(access(file), { code: 'ENOENT' }, 'The request file must be removed.');
+                        }
+                    }
+                }
+            });
+        }
         if (appsWithHooks.has(appName)) {
             await t.test('both deployment hooks map functions to the SDK operation IDs', async () => {
                 const { sdk } = connectorSamples[appName];
