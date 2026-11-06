@@ -131,7 +131,7 @@ set_connection_keybased_auth() {
     local acct="$1" key="$2"
     local url="https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Web/connectorGateways/${connectorNamespaceName}/connections/${azureblobConnectionName}?api-version=2026-05-01-preview"
     local bodyFile
-    bodyFile=$(mktemp --suffix=.json)
+    bodyFile=$(mktemp) || return 1
     jq -nc \
         --arg loc "$azureLocation" \
         --arg acct "$acct" \
@@ -248,7 +248,7 @@ set_connection_access_policy() {
     local policyName="$1" objectId="$2"
     local url="https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Web/connectorGateways/${connectorNamespaceName}/connections/${azureblobConnectionName}/accessPolicies/${policyName}?api-version=2026-05-01-preview"
     local bodyFile
-    bodyFile=$(mktemp --suffix=.json)
+    bodyFile=$(mktemp) || return 1
     jq -nc --arg oid "$objectId" --arg tid "$tenantId" '{
         properties: { principal: { type: "ActiveDirectory", identity: { objectId: $oid, tenantId: $tid } } }
     }' > "$bodyFile"

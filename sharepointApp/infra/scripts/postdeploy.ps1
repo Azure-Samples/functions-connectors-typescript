@@ -27,11 +27,8 @@ if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $sharepoin
 }
 
 # --- Required SharePoint identifiers ----------------------------------------
-# Both SharePoint triggers used in this app are scoped to a specific site and
-# folder. These cannot be inferred at provisioning time, so we either read
-# them from azd env vars or prompt the user.
+# Read the site from azd env vars or prompt the user.
 $sharepointSiteAddress = $outputs.SHAREPOINT_SITE_ADDRESS
-$sharepointFolderId    = $outputs.SHAREPOINT_FOLDER_ID
 
 function Select-FromList {
     param(
@@ -53,7 +50,7 @@ function Select-FromList {
     while ($true) {
         $answer = Read-Host "Enter number (1-$($Items.Count))"
         if ($null -eq $answer) {
-            throw "No input available. Re-run with 'interactive: true' on the hook, or set SHAREPOINT_SITE_ADDRESS / SHAREPOINT_FOLDER_ID via 'azd env set'."
+            throw "No input available. Re-run with 'interactive: true' on the hook, or set SHAREPOINT_SITE_ADDRESS via 'azd env set'."
         }
         $num = 0
         if ([int]::TryParse($answer, [ref]$num) -and $num -ge 1 -and $num -le $Items.Count) {
@@ -113,13 +110,13 @@ function Invoke-AzLoginForGraph {
 
 function Read-ManualSharepointInputs {
     Write-Host ""
-    Write-Host "Falling back to manual site entry. The library and folder pickers will still run via Microsoft Graph." -ForegroundColor Yellow
+    Write-Host "Falling back to manual site entry." -ForegroundColor Yellow
     $site = Read-Host "SharePoint site URL (e.g. https://contoso.sharepoint.com/sites/MySite)"
     if (-not $site) { return $null }
     return @{ site = $site }
 }
 
-if (-not $sharepointSiteAddress -or -not $sharepointFolderId) {
+if (-not $sharepointSiteAddress) {
     Write-Host ""
     Write-Host "Fetching SharePoint sites accessible to your account from Microsoft Graph..." -ForegroundColor Yellow
 
@@ -129,19 +126,18 @@ if (-not $sharepointSiteAddress -or -not $sharepointFolderId) {
     # NOTE: We deliberately do NOT attempt 'az login --scope https://graph.microsoft.com/Sites.Read.All'.
     # Many tenants block that flow with AADSTS65002 (the Azure CLI first-party app is not
     # pre-authorized for Microsoft Graph). Fall back to manual site URL entry instead and let
-    # the library/folder pickers run via Graph against that specific site.
+    # the user provide the site URL directly.
 
     if (-not $sitesResponse -or -not $sitesResponse.value -or $sitesResponse.value.Count -eq 0) {
         Write-Host ""
         Write-Host "NOTE: The Azure CLI access token cannot enumerate SharePoint sites via Microsoft Graph search." -ForegroundColor Yellow
         Write-Host "      (This is expected when the tenant has not pre-authorized the Azure CLI for 'Sites.Read.All'.)" -ForegroundColor DarkGray
-        Write-Host "      You can paste the site URL directly; the library and folder pickers will still run." -ForegroundColor Yellow
+        Write-Host "      You can paste the site URL directly." -ForegroundColor Yellow
         Write-Host ""
         $manual = Read-ManualSharepointInputs
         if (-not $manual) {
             Write-Host "ERROR: No site provided. Set the values manually and re-run:" -ForegroundColor Red
             Write-Host "         azd env set SHAREPOINT_SITE_ADDRESS https://contoso.sharepoint.com/sites/MySite" -ForegroundColor Red
-            Write-Host "         azd env set SHAREPOINT_FOLDER_ID    '/Shared Documents'" -ForegroundColor Red
             exit 1
         }
         $sharepointSiteAddress = $manual.site
@@ -163,65 +159,6 @@ if (-not $sharepointSiteAddress -or -not $sharepointFolderId) {
         $sharepointSiteAddress = $selectedSite.webUrl
         azd env set SHAREPOINT_SITE_ADDRESS $sharepointSiteAddress | Out-Null
         Write-Host "Saved SHAREPOINT_SITE_ADDRESS=$sharepointSiteAddress" -ForegroundColor Green
-    } else {
-        $selectedSite = $sites | Where-Object { $_.webUrl -eq $sharepointSiteAddress } | Select-Object -First 1
-    }
-
-    if (-not $sharepointFolderId) {
-        # Resolve the Graph site id, either from the search result or by URL.
-        $siteId = $null
-        if ($selectedSite -and $selectedSite.id) {
-            $siteId = $selectedSite.id
-        } else {
-            $uri = [Uri]$sharepointSiteAddress
-            $relPath = $uri.AbsolutePath.TrimEnd('/')
-            $resolveUrl = "https://graph.microsoft.com/v1.0/sites/$($uri.Host):$($relPath)"
-            $resolved = Invoke-Graph -Url $resolveUrl -UriParameters @('$select=id')
-            if ($resolved -and $resolved.id) { $siteId = $resolved.id }
-        }
-
-        if (-not $siteId) {
-            Write-Host "NOTE: Microsoft Graph could not resolve the site id (likely 'Sites.Read.All' is not consented for the Azure CLI)." -ForegroundColor Yellow
-            $manualFolder = Read-Host "Document library / folder path (press Enter for '/Shared Documents')"
-            if ([string]::IsNullOrWhiteSpace($manualFolder)) { $manualFolder = '/Shared Documents' }
-            $sharepointFolderId = $manualFolder
-        } else {
-            $drivesResponse = Invoke-Graph -Url "https://graph.microsoft.com/v1.0/sites/$siteId/drives" -UriParameters @('$select=id,name,webUrl')
-            if (-not $drivesResponse -or -not $drivesResponse.value -or $drivesResponse.value.Count -eq 0) {
-                Write-Host "NOTE: Microsoft Graph returned no document libraries for this site." -ForegroundColor Yellow
-                $manualFolder = Read-Host "Document library / folder path (press Enter for '/Shared Documents')"
-                if ([string]::IsNullOrWhiteSpace($manualFolder)) { $manualFolder = '/Shared Documents' }
-                $sharepointFolderId = $manualFolder
-            } else {
-                $drive = Select-FromList -Title 'Select a document library:' -Items $drivesResponse.value -LabelProperty 'name'
-                # The connector folderId accepts the human-readable
-                # server-relative path. The default 'Documents' library
-                # surfaces under '/Shared Documents' in the site URL.
-                $libraryRoot = if ($drive.name -eq 'Documents') { '/Shared Documents' } else { "/$($drive.name)" }
-
-                # Let the user pick the library root or drill into a subfolder.
-                $folderChoices = @(
-                    [pscustomobject]@{ name = "(library root: $libraryRoot)"; relativePath = '' }
-                )
-                $childrenResponse = Invoke-Graph -Url "https://graph.microsoft.com/v1.0/drives/$($drive.id)/root/children" -UriParameters @('$select=name,folder', '$top=200') -Quiet
-                if ($childrenResponse -and $childrenResponse.value) {
-                    foreach ($child in $childrenResponse.value) {
-                        if ($child.folder) {
-                            $folderChoices += [pscustomobject]@{ name = $child.name; relativePath = "/$($child.name)" }
-                        }
-                    }
-                }
-
-                if ($folderChoices.Count -eq 1) {
-                    $sharepointFolderId = $libraryRoot
-                } else {
-                    $picked = Select-FromList -Title 'Select a folder (or library root):' -Items $folderChoices -LabelProperty 'name'
-                    $sharepointFolderId = $libraryRoot + $picked.relativePath
-                }
-            }
-        }
-        azd env set SHAREPOINT_FOLDER_ID $sharepointFolderId | Out-Null
-        Write-Host "Saved SHAREPOINT_FOLDER_ID=$sharepointFolderId" -ForegroundColor Green
     }
 }
 
@@ -240,10 +177,48 @@ if (-not $extInstalled) {
 # One entry per Functions trigger in this app. operationName values come from
 # the SharePoint Online connector swagger:
 #   https://learn.microsoft.com/en-us/connectors/sharepointonline/
-$triggers = @(
-    @{ functionName = 'OnSharepointNewFile';     operationName = 'OnNewFile';     parameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'folderId'; value = $sharepointFolderId }) },
-    @{ functionName = 'OnSharepointUpdatedFile'; operationName = 'OnUpdatedFile'; parameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'folderId'; value = $sharepointFolderId }) }
-)
+$triggers = @()
+
+$sharepointListId = $outputs.SHAREPOINT_LIST_ID
+$sharepointLibraryId = $outputs.SHAREPOINT_LIBRARY_ID
+$sharepointFormId = $outputs.SHAREPOINT_FORM_ID
+$sharepointDigestSchedule = $outputs.SHAREPOINT_DIGEST_SCHEDULE
+
+if ($sharepointListId) {
+    $listParameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'table'; value = $sharepointListId })
+    $triggers += @(
+        @{ functionName = 'OnSharepointChangedItems'; operationName = 'GetOnChangedItems'; parameters = $listParameters },
+        @{ functionName = 'OnSharepointDeletedItems'; operationName = 'GetOnDeletedItems'; parameters = $listParameters },
+        @{ functionName = 'OnSharepointNewItems'; operationName = 'GetOnNewItems'; parameters = $listParameters },
+        @{ functionName = 'OnSharepointUpdatedItems'; operationName = 'GetOnUpdatedItems'; parameters = $listParameters }
+    )
+} else {
+    Write-Host "WARNING: List item triggers are not configured. Set SHAREPOINT_LIST_ID with 'azd env set' and rerun this hook." -ForegroundColor Yellow
+}
+
+if ($sharepointLibraryId) {
+    $libraryParameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'table'; value = $sharepointLibraryId })
+    $triggers += @(
+        @{ functionName = 'OnSharepointDeletedFileItems'; operationName = 'GetOnDeletedFileItems'; parameters = $libraryParameters },
+        @{ functionName = 'OnSharepointNewFileItems'; operationName = 'GetOnNewFileItems'; parameters = $libraryParameters },
+        @{ functionName = 'OnSharepointUpdatedFileClassifiedTimes'; operationName = 'GetOnUpdatedFileClassifiedTimes'; parameters = $libraryParameters },
+        @{ functionName = 'OnSharepointUpdatedFileItems'; operationName = 'GetOnUpdatedFileItems'; parameters = $libraryParameters }
+    )
+} else {
+    Write-Host "WARNING: File property triggers are not configured. Set SHAREPOINT_LIBRARY_ID with 'azd env set' and rerun this hook." -ForegroundColor Yellow
+}
+
+if ($sharepointListId -and $sharepointFormId) {
+    $triggers += @{ functionName = 'OnSharepointNewItemsFromForm'; operationName = 'GetOnNewItemsFromForm'; parameters = $listParameters + @(@{ name = 'form'; value = $sharepointFormId }) }
+} else {
+    Write-Host "WARNING: Form trigger is not configured. Set SHAREPOINT_LIST_ID and SHAREPOINT_FORM_ID with 'azd env set' and rerun this hook." -ForegroundColor Yellow
+}
+
+if ($sharepointListId -and $sharepointDigestSchedule) {
+    $triggers += @{ functionName = 'OnSharepointRecurrenceDigest'; operationName = 'GetOnRecurrenceDigest'; parameters = $listParameters + @(@{ name = 'add'; value = $true }, @{ name = 'update'; value = $true }, @{ name = 'runSchedule'; value = $sharepointDigestSchedule }) }
+} else {
+    Write-Host "WARNING: Digest trigger is not configured. Set SHAREPOINT_LIST_ID and SHAREPOINT_DIGEST_SCHEDULE with 'azd env set' and rerun this hook." -ForegroundColor Yellow
+}
 
 # --- Authorize the SharePoint connection (OAuth consent) --------------------
 function Test-ConnectionExists {

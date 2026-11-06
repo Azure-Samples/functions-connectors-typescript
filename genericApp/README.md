@@ -4,7 +4,7 @@ Azure Functions app demonstrating the generic `connectorTrigger<TItem>` API from
 
 | Function | Connector | Item type |
 | -------- | --------- | --------- |
-| `OnGenericAzureBlobUpdated` | Azure Blob Storage | `AzureBlobMetadata` |
+| `OnGenericAzureBlobUpdated` | Azure Blob Storage | SDK `BlobMetadata`, imported as `AzureBlobMetadata` |
 | `OnGenericOffice365NewEmail` | Office 365 Outlook | `GraphClientReceiveMessage` |
 | `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` |
 | `OnGenericTeamsChannelMessage` | Microsoft Teams | `ChatMessage` |
@@ -18,6 +18,8 @@ Azure Functions app demonstrating the generic `connectorTrigger<TItem>` API from
 | Connector without a wrapper, or a custom item type | `connectorTrigger<TItem>(...)` |
 
 Each handler receives a `ConnectorTriggerContext<TItem>` with `items`, the normalized `payload`, the original `rawPayload`, and `toJSON()`. The generic API changes the TypeScript handler declaration, not the connector operation. A separate trigger configuration must route the desired operation to the exact registered function name.
+
+In `0.1.0-preview`, Azure Blob has no typed wrapper or metadata re-export. Its example imports the metadata model from `@azure/connectors/generated/AzureblobExtensions`. See the [complete typed sample catalog](../README.md#samples) for the nine supported namespaces.
 
 ## Prerequisites
 
@@ -39,7 +41,7 @@ The deployment builds the TypeScript app and provisions a Flex Consumption Funct
 
 ## Connector configuration
 
-Use the [operation mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md) to choose the operation and parameters. Route its trigger configuration to:
+Use the SDK's trigger-operation and parameter metadata and the [manual setup guide](../README.md#manual-connector-setup) to choose the operation and parameters. Route its trigger configuration to:
 
 ```text
 https://<functions-host>/runtime/webhooks/connector?functionName=<registered-function-name>

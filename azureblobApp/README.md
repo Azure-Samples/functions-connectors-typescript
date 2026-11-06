@@ -1,10 +1,12 @@
 # Azure Blob Storage Connector Sample
 
-Azure Functions app demonstrating an Azure Blob Storage trigger from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The handler is in [src/functions](src/functions/).
+Azure Functions app demonstrating an Azure Blob Storage trigger using the generic `connectorTrigger<TItem>` API from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The handler is in [src/functions](src/functions/).
+
+Version `0.1.0-preview` no longer exports `connectors.azureblob` or `AzureBlobMetadata`. The sample imports `BlobMetadata` directly from `@azure/connectors/generated/AzureblobExtensions` under the alias `AzureBlobMetadata`, and uses `context.items`. Its function name and remote subscription remain unchanged.
 
 | Function | Connector operation | Description |
 | -------- | ------------------- | ----------- |
-| `OnAzureBlobUpdatedFile` | `OnUpdatedFiles_V2` | Blob is added or modified in the configured container (properties only) |
+| [OnAzureBlobUpdatedFile](src/functions/onAzureBlobUpdatedFile.ts) | `OnUpdatedFiles_V2` | Blob is added or modified in the configured container (properties only) |
 
 ## Prerequisites
 

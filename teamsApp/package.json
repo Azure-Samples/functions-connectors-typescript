@@ -6,21 +6,21 @@
   "main": "dist/functions/*.js",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test ../tests/samples.test.mjs",
+    "test": "npm run build && node --test ../tests/samples.test.mjs ../tests/teams-setup.test.mjs",
     "watch": "tsc -w",
     "prestart": "npm run build",
     "start": "func start"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
-    "@azure/connectors": "0.3.0",
-    "@azure/functions": "^4.16.0",
-    "@azure/functions-extensions-connectors": "0.0.2-preview"
+    "@azure/connectors": "0.3.1-preview",
+    "@azure/functions": "^4.17.0",
+    "@azure/functions-extensions-connectors": "0.1.0-preview"
   },
   "devDependencies": {
-    "@types/node": "^20.19.41",
+    "@types/node": "^24.0.0",
     "typescript": "^5.0.0"
   }
 }
