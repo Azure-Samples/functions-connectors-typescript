@@ -51,7 +51,11 @@ graph_get() {
     if [[ $rc -ne 0 || -z "$out" ]]; then
         if [[ -s "$errFile" ]]; then
             LAST_GRAPH_ERROR="$(cat "$errFile")"
-            echo "   Graph call failed: $LAST_GRAPH_ERROR" >&2
+            if [[ "$LAST_GRAPH_ERROR" == *AADSTS530084* ]]; then
+                echo "   Microsoft Graph site discovery is blocked by your organization's Token Protection policy." >&2
+            else
+                echo "   Graph call failed: $LAST_GRAPH_ERROR" >&2
+            fi
         else
             LAST_GRAPH_ERROR=""
         fi
@@ -117,12 +121,11 @@ if [[ -z "$sharepointSiteAddress" ]]; then
 
     if [[ -z "$sitesJson" || "$sitesCount" == "0" ]]; then
         echo ""
-        echo -e "${YELLOW}NOTE: The Azure CLI access token cannot enumerate SharePoint sites via Microsoft Graph search.${NC}" >&2
-        echo -e "      (This is expected when the tenant has not pre-authorized the Azure CLI for 'Sites.Read.All'.)" >&2
-        echo -e "${YELLOW}      You can paste the site URL directly.${NC}" >&2
+        echo -e "${YELLOW}SharePoint site discovery is unavailable or returned no sites.${NC}" >&2
+        echo "Enter a site URL you can access. Connector OAuth consent is still required." >&2
         echo ""
-        read -r -p "SharePoint site URL (e.g. https://contoso.sharepoint.com/sites/MySite): " sharepointSiteAddress
-        if [[ -z "$sharepointSiteAddress" ]]; then
+        printf 'SharePoint site URL (e.g. https://contoso.sharepoint.com/sites/MySite): ' >&2
+        if ! IFS= read -r sharepointSiteAddress || [[ -z "$sharepointSiteAddress" ]]; then
             echo -e "${RED}ERROR: No site provided. Set the values manually:${NC}" >&2
             echo -e "${RED}         azd env set SHAREPOINT_SITE_ADDRESS https://contoso.sharepoint.com/sites/MySite${NC}" >&2
             exit 1

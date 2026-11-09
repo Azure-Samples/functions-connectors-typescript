@@ -21,6 +21,8 @@ All ten non-deprecated helpers have examples. List items, file properties, class
 
 Follow the [shared prerequisites](../README.md#prerequisites). You also need a SharePoint Online account with access to the site and document library, and permission to consent to the connector.
 
+Site discovery uses Microsoft Graph through your Azure CLI sign-in. If your organization's policy blocks that access, the hook prompts you to enter the site URL directly. You can also set `SHAREPOINT_SITE_ADDRESS` in advance to skip discovery. Connector OAuth consent is still required.
+
 ## Deploy to Azure
 
 Run from `sharepointApp`:

@@ -305,6 +305,38 @@ tenantId=test`;
                     const hook = await readFile(path.join(appRoot, 'infra/scripts', `postdeploy.${suffix}`), 'utf8');
                     if (appName === 'sharepointApp') {
                         assert.doesNotMatch(hook, /\bOnSharepoint(?:New|Updated)File\b|\bSHAREPOINT_FOLDER_ID\b/);
+                        if (suffix === 'sh' && process.platform !== 'win32') {
+                            const end = hook.indexOf('# --- Verify the connector-namespace');
+                            assert.ok(end > 0, 'Isolate site selection without executing connector setup.');
+                            for (const [input, savedSite] of [['https://example.sharepoint.com/sites/test\n', ''], ['', ''], ['', 'https://example.sharepoint.com/sites/saved']]) {
+                                const values = { resourceGroupName: 'test', connectorNamespaceName: 'test', sharepointConnectionName: 'test', functionAppName: 'test', SHAREPOINT_SITE_ADDRESS: savedSite };
+                                const mocks = `
+azd() {
+    if [[ "$1 $2" == "env get-values" ]]; then
+        printf '%s\\n' '${JSON.stringify(values)}'
+    elif [[ "$1 $2 $3" == "env set SHAREPOINT_SITE_ADDRESS" && "$4" == "https://example.sharepoint.com/sites/test" ]]; then
+        echo 'TEST: site saved' >&2
+    else
+        return 91
+    fi
+}
+az() {
+    if [[ "$1" != "rest" || -n '${savedSite}' ]]; then return 92; fi
+    echo 'AADSTS530084: Access blocked by conditional access token protection policy.' >&2
+    return 1
+}`;
+                                const result = spawnSync('bash', ['-c', `${mocks}\n${hook.slice(0, end)}`], { input, encoding: 'utf8', timeout: 5000 });
+                                assert.ifError(result.error);
+                                assert.equal(result.status, input || savedSite ? 0 : 1, result.stderr);
+                                if (savedSite) {
+                                    assert.doesNotMatch(result.stdout + result.stderr, /Fetching SharePoint sites|SharePoint site URL/);
+                                } else {
+                                    assert.match(result.stderr, /SharePoint site URL \(e\.g\./, 'The manual prompt must be visible even when stdin is piped.');
+                                    if (input) assert.match(result.stderr, /TEST: site saved/);
+                                    else assert.match(result.stderr, /ERROR: No site provided/);
+                                }
+                            }
+                        }
                     }
                     if (appName === 'office365App') {
                         assert.doesNotMatch(hook, /\bOnNewCalendarEvent\b|\bCreateOnNewEmailSubscription\b/);

@@ -84,7 +84,11 @@ function Invoke-Graph {
             $err = (Get-Content $errFile -Raw).Trim()
             $script:LastGraphError = $err
             if (-not $Quiet) {
-                if ($err) { Write-Host "   Graph call failed: $err" -ForegroundColor DarkGray }
+                if ($err -match 'AADSTS530084') {
+                    Write-Host "   Microsoft Graph site discovery is blocked by your organization's Token Protection policy." -ForegroundColor Yellow
+                } elseif ($err) {
+                    Write-Host "   Graph call failed: $err" -ForegroundColor DarkGray
+                }
             }
             return $null
         }
@@ -130,9 +134,8 @@ if (-not $sharepointSiteAddress) {
 
     if (-not $sitesResponse -or -not $sitesResponse.value -or $sitesResponse.value.Count -eq 0) {
         Write-Host ""
-        Write-Host "NOTE: The Azure CLI access token cannot enumerate SharePoint sites via Microsoft Graph search." -ForegroundColor Yellow
-        Write-Host "      (This is expected when the tenant has not pre-authorized the Azure CLI for 'Sites.Read.All'.)" -ForegroundColor DarkGray
-        Write-Host "      You can paste the site URL directly." -ForegroundColor Yellow
+        Write-Host "SharePoint site discovery is unavailable or returned no sites." -ForegroundColor Yellow
+        Write-Host "Enter a site URL you can access. Connector OAuth consent is still required." -ForegroundColor Yellow
         Write-Host ""
         $manual = Read-ManualSharepointInputs
         if (-not $manual) {
