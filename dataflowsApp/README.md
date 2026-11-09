@@ -1,6 +1,6 @@
 # Dataflows Connector Sample
 
-Azure Functions app covering `connectors.dataflows.onRefreshComplete` from `@azure/functions-extensions-connectors@0.1.0-preview`.
+Azure Functions app covering `connectors.dataflows.onRefreshComplete` from `@azure/functions-extensions-connectors@0.2.0-preview`.
 
 | Function | Connector operation | Required parameters |
 | -------- | ------------------- | ------------------- |

@@ -10,9 +10,9 @@ TypeScript samples for the [Azure Functions Connector Samples](https://github.co
 | ------ | --------- | -------- |
 | [azureblobApp](azureblobApp/) | [Azure Blob Storage](https://learn.microsoft.com/connectors/azureblob/) | Blob added or modified, using the generic API |
 | [dataflowsApp](dataflowsApp/) | [Dataflows](https://learn.microsoft.com/connectors/dataflows/) | Refresh completed |
-| [genericApp](genericApp/) | Any connector | Generic `connectorTrigger<TItem>` examples with custom item types |
+| [genericApp](genericApp/) | Any connector | Generic `connectorTrigger<TItem>` examples with custom item types; opt-in single-event polling |
 | [kustoApp](kustoApp/) | [Azure Data Explorer](https://learn.microsoft.com/connectors/kusto/) | Typed query-result callback helper; no SDK trigger operation |
-| [office365App](office365App/) | [Office 365 Outlook](https://learn.microsoft.com/connectors/office365/) | New, flagged, mentioning-you, and shared mailbox emails; new, updated, changed, and upcoming calendar events |
+| [office365App](office365App/) | [Office 365 Outlook](https://learn.microsoft.com/connectors/office365/) | New, flagged, mentioning-you, and shared mailbox emails; new, updated, changed, and upcoming calendar events; opt-in batched email polling |
 | [onedriveApp](onedriveApp/) | [OneDrive for Business](https://learn.microsoft.com/connectors/onedriveforbusiness/) | New and updated file content and metadata |
 | [plannerApp](plannerApp/) | [Planner](https://learn.microsoft.com/connectors/planner/) | New, completed, and assigned-to-me tasks |
 | [salesforceApp](salesforceApp/) | [Salesforce](https://learn.microsoft.com/connectors/salesforce/) | New and updated records |
@@ -20,7 +20,7 @@ TypeScript samples for the [Azure Functions Connector Samples](https://github.co
 | [teamsApp](teamsApp/) | [Microsoft Teams](https://learn.microsoft.com/connectors/teams/) | Channel/chat messages, mentions, reactions, keywords, recordings, transcripts, and team membership changes |
 | [vstsApp](vstsApp/) | [Azure DevOps](https://learn.microsoft.com/connectors/visualstudioteamservices/) | Builds, pull requests, pushes, TFVC check-ins, and work item changes |
 
-The eleven apps contain 55 sample functions, covering **40 typed registrations in nine namespaces** exported by `@azure/functions-extensions-connectors@0.1.0-preview`, plus thirteen generic examples and two raw OneDrive content handlers. The samples omit two deprecated SharePoint file helpers and one duplicate Office 365 calendar alias from the 43 exported helpers. The typed count includes the Kusto query-result helper, which is not a remote trigger operation.
+The eleven apps contain 55 webhook sample functions and two opt-in polling functions, covering **40 typed registrations in nine namespaces** exported by `@azure/functions-extensions-connectors@0.2.0-preview`, plus generic examples and two raw OneDrive content handlers. The samples omit two deprecated SharePoint file helpers and one duplicate Office 365 calendar alias from the 43 exported helpers. The typed count includes the Kusto query-result helper, which is not a remote trigger operation.
 
 Each folder has its own dependencies, `azure.yaml`, host configuration, and source code. The five original connector-specific apps configure connections and triggers through deployment hooks; additional Office 365 and SharePoint subscriptions require the optional settings documented in their READMEs. Additional Teams webhook inputs are collected interactively after connector OAuth consent. `genericApp` and the five new apps use [manual connector setup](#manual-connector-setup). The new apps reuse [genericApp's deployment module](genericApp/infra/main.bicep), so keep the full repository checkout when deploying them.
 
@@ -32,13 +32,15 @@ All apps use:
 
 ```json
 {
-  "@azure/connectors": "0.3.1-preview",
+  "@azure/connectors": "0.4.0-preview",
   "@azure/functions": "^4.17.0",
-  "@azure/functions-extensions-connectors": "0.1.0-preview"
+  "@azure/functions-extensions-connectors": "0.2.0-preview"
 }
 ```
 
 The connector extension requires **Node.js 24+**. Package engines, Node.js type definitions, and the deployment templates use Node.js 24.
+
+The SDK version is upgraded alongside the extension because `0.2.0-preview` requires `@azure/connectors@^0.4.0-preview`. If your registry does not yet expose these releases, use the [local tarball installation instructions](tests/README.md#registry-and-lockfile-failures).
 
 The `name` in each `azure.yaml` is a lowercase project slug, as required by the azd schema. Folder names and retained Function names are unchanged.
 
@@ -52,9 +54,38 @@ Retained registered function names remain unchanged, but some helper names chang
 - Azure Blob has no first-class helper or metadata re-export in this release. Both Blob examples use `connectorTrigger<AzureBlobMetadata>`, importing the metadata type from `@azure/connectors/generated/AzureblobExtensions`.
 - `office365.onCalendarNewItems` is an alias for `onNewCalendarEvent`. Only `onCalendarNewItems` has an example and subscription, avoiding duplicate delivery for the same calendar operation.
 
+## Polling samples
+
+Polling examples live in separate files; existing webhook handlers and deployment hooks are unchanged:
+
+| App | Sample | Invocation mode |
+| --- | ------ | --------------- |
+| [office365App](office365App/) | [OnNewEmailPoll](office365App/src/functions/onNewEmailPoll.ts) | Typed helper; up to four Poll events per invocation |
+| [genericApp](genericApp/) | [OnGenericOffice365NewEmailPoll](genericApp/src/functions/onGenericOffice365NewEmailPoll.ts) | Generic API; one Poll event per invocation, up to four concurrent calls |
+
+Both use Office 365 Outlook's `OnNewEmailV3` operation. Choose one example per Poll Trigger Config; listeners using the same configuration compete for events. A Poll event can itself contain several emails, independently of invocation cardinality.
+
+1. Create an authorized connection and an enabled Trigger Config with service `deliveryMode: "Poll"`, **without** webhook `notificationDetails`. Follow the extension's [Poll configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery) for the ARM request and access policies. Authorize both the namespace identity that runs the connector trigger and the Function/developer identity that receives Poll events. Existing deployment hooks create webhook subscriptions only.
+2. Merge these entries into the chosen app's `local.settings.json` `Values` object:
+
+   ```json
+   {
+     "EnablePollingSamples": "true",
+     "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
+     "OnNewEmailPollTriggerConfigName": "<poll-trigger-config-name>"
+   }
+   ```
+
+   `ConnectorNamespace` is a configuration prefix, not a connector connection resource name. Derive its endpoint from the Trigger Config's service-generated `pollingEndpoints.receiveUri`: remove `/triggerconfigs/<name>/receive` and the query string, preserving any `/api/connectorGateways/<id>` prefix. For stable namespace DNS, use only `https://<connector-namespace-host>`, with no `/api` suffix. Never commit real endpoints or credentials.
+3. Use a host Connector extension that supports Poll delivery, sign in with `az login`, start Azurite if needed, and run `npm start` from the chosen app. No public callback URL or tunnel is required. Preview bundles can lag the current extension source; verify the selected bundle's contents using the [host extension guidance](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#non-net-workers).
+
+For Azure, add the same settings to the Function App and set `ConnectorNamespace__credential=managedidentity`; grant its managed identity access to the connection. Restart the host after changing settings.
+
+Polling samples do not register unless `EnablePollingSamples` is exactly `true`, so existing deployments do not require new connection settings. Batch handlers receive flattened, ordered `context.items` / `context.emails`; `context.rawPayload` retains the complete original envelope array and metadata. `maxConcurrentCalls` is used only by the single-event example, not the batched example.
+
 ## More triggers and operations
 
-See the [Operations to Azure Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md) for connector trigger signatures. The [Azure Connectors Node.js SDK](https://github.com/Azure/Connectors-NodeJS-SDK) provides typed action clients and exported `<Connector>TriggerOperations` / `<Connector>TriggerParameters` metadata. Use that metadata from the pinned [`0.3.1-preview` release](https://www.npmjs.com/package/@azure/connectors/v/0.3.1-preview) for exact operation IDs, required parameters, and dynamic-value pickers; helper names are not always remote operation IDs.
+See the [Operations to Azure Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md) for connector trigger signatures. The [Azure Connectors Node.js SDK](https://github.com/Azure/Connectors-NodeJS-SDK) provides typed action clients and exported `<Connector>TriggerOperations` / `<Connector>TriggerParameters` metadata. Use that metadata from the pinned `0.4.0-preview` SDK for exact operation IDs, required parameters, and dynamic-value pickers; helper names are not always remote operation IDs.
 
 ## Manual connector setup
 

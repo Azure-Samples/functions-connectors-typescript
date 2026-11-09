@@ -24,22 +24,23 @@ On other platforms, install and build each app, then run the same Node test runn
 
 The suite checks:
 
-- Every manifest, lockfile, and installed package uses the requested `@azure/connectors@0.3.1-preview`, `@azure/functions@^4.17.0`, and `@azure/functions-extensions-connectors@0.1.0-preview` releases, plus CommonJS and ESM SDK entry-point loading.
+- Every manifest, lockfile, and installed package uses the requested `@azure/connectors@0.4.0-preview`, `@azure/functions@^4.17.0`, and `@azure/functions-extensions-connectors@0.2.0-preview` releases, plus CommonJS and ESM SDK entry-point loading.
 - The extension and app resolve the same SDK installation, and host/deployment runtime settings match Node.js 24.
 - All azd project names use schema-compliant lowercase slugs, and deployment ignore files protect local settings, azd state, and Azurite data.
-- All 55 expected sample functions register through the connector extension or raw host API.
+- All 57 expected sample functions register through the connector extension or raw host API when polling is enabled. Both polling files are also checked with the opt-in setting absent.
 - The samples actually call all 40 non-deprecated, non-duplicate public typed registration helpers, including the Kusto callback helper. The expected API list is discovered from the installed extension, excluding the two deprecated SharePoint file helpers and the duplicate Office 365 calendar alias, not inferred from handler names.
 - Both platform hooks for Office 365, OneDrive for Business, SharePoint, and Teams map registered function names to operation IDs from the installed SDK.
 - Both Office 365 hooks subscribe only one function to the new-calendar operation and omit the deprecated webhook email operation.
 - Both Teams hooks use the shared authenticated setup for seven additional operations from the installed SDK.
-- Eight payload scenarios per normalized handler: object and JSON batches, object and JSON single items, empty batches, missing bodies, null payloads, and malformed JSON.
+- Twelve payload scenarios per normalized handler: object and JSON batches, object and JSON single items, empty batches, missing bodies, null payloads, malformed JSON, mixed polling envelope arrays as objects and JSON, a polling envelope containing multiple items, and an empty polling array.
 - Eight opaque-content scenarios per raw OneDrive content handler cover binary buffers, binary/text envelopes, JSON envelopes, raw text, JSON file contents, empty content, and null payloads; payload identity is preserved and file contents are never logged.
+- Polling binding options reach the host unchanged, single-event concurrency is separate from batching, webhook defaults are preserved, and webhook hooks do not provision polling listeners.
 - Additional flat-record batch and single-item scenarios for all ten dynamic SharePoint and Salesforce handlers; logging must not depend on a generated `dynamicProperties` wrapper being present.
-- Items reach each handler, original payloads are preserved, calendar changes use `ActionType`, and malformed JSON produces a warning.
+- Items reach each handler in order, original payloads and polling metadata are preserved, calendar changes use `ActionType`, and malformed JSON produces a warning.
 
 Host registration is intercepted and public helper calls are observed, but the real connector extension's normalization and typed-context wrappers still execute. These offline tests do not load local settings, need credentials, start a Functions host, call connector services, or provision resources. They do not replace end-to-end validation with authorized connections and live events.
 
-The shared sample smoke suite contains 520 checks, including 460 handler payload scenarios.
+The shared sample smoke suite includes 696 handler payload scenarios.
 
 `npm test` in `teamsApp` also runs [teams-setup.test.mjs](teams-setup.test.mjs). These offline tests exercise all three transcript/recording scopes, dynamic team/channel/chat/meeting pickers, selected-ID dependencies, free-form keyword/reaction inputs, nested `body` parameters, callback-URL omission, explicit skips, lookup failures, and setup ordering in both hooks. Dynamic request schemas are synthetic fixtures, not a claim about a tenant's live schema. No Azure operations run during these tests.
 
@@ -59,4 +60,13 @@ Connector-specific dynamic values, OAuth permissions, and live callback delivery
 
 If installation fails, do not substitute older packages or assume that previously installed dependencies validate the upgrade. The suite checks all three releases and lockfile consistency, so a handler-only success cannot hide stale dependencies. Use a trusted registry that resolves the requested versions, then regenerate lockfiles with `npm install` only after that registry is available.
 
-The updated extension depends on `@azure/connectors@^0.3.1-preview`, so it shares the apps' direct `0.3.1-preview` SDK rather than installing the previous separate preview SDK.
+The updated extension depends on `@azure/connectors@^0.4.0-preview`, so all apps pin the matching `0.4.0-preview` SDK and share that installation with the extension.
+
+If these previews are not yet available in your registry, install trusted local tarballs from the chosen app directory without changing the portable version pins or lockfile:
+
+```powershell
+npm install --no-save --package-lock=false "C:\packages\azure-connectors-0.4.0-preview.tgz" "C:\packages\azure-functions-extensions-connectors-0.2.0-preview.tgz"
+npm test
+```
+
+Use the actual tarball locations on your machine. Do not commit machine-specific tarball paths or substitute older releases.

@@ -15,9 +15,9 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const samples = {
     azureblobApp: ['OnAzureBlobUpdatedFile'],
     dataflowsApp: ['OnDataflowRefreshComplete'],
-    genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
+    genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericOffice365NewEmailPoll', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
     kustoApp: ['OnKustoQueryResult'],
-    office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
+    office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewEmailPoll', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
     onedriveApp: ['OnOneDriveNewFile', 'OnOneDriveUpdatedFile', 'OnOneDriveNewFileContent', 'OnOneDriveUpdatedFileContent'],
     plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
     salesforceApp: ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
@@ -38,6 +38,10 @@ const samples = {
         'OnVstsWorkItemCreated', 'OnVstsWorkItemUpdated',
     ],
 };
+const pollingSamples = {
+    genericApp: { name: 'OnGenericOffice365NewEmailPoll', file: 'onGenericOffice365NewEmailPoll.js', cardinality: 'one', maxBatchSize: 1, maxConcurrentCalls: 4 },
+    office365App: { name: 'OnNewEmailPoll', file: 'onNewEmailPoll.js', cardinality: 'many', maxBatchSize: 4 },
+};
 const connectorSamples = {
     dataflowsApp: { namespace: 'dataflows', sdk: 'Dataflows' },
     kustoApp: { namespace: 'kusto' },
@@ -50,9 +54,9 @@ const connectorSamples = {
     vstsApp: { namespace: 'vsts', sdk: 'Visualstudioteamservices' },
 };
 const dependencies = {
-    '@azure/connectors': '0.3.1-preview',
+    '@azure/connectors': '0.4.0-preview',
     '@azure/functions': '^4.17.0',
-    '@azure/functions-extensions-connectors': '0.1.0-preview',
+    '@azure/functions-extensions-connectors': '0.2.0-preview',
 };
 const appsWithHooks = new Set(['office365App', 'onedriveApp', 'sharepointApp', 'teamsApp']);
 const publishedApis = new Set();
@@ -132,6 +136,7 @@ for (const [appName, expectedNames] of selected) {
                 assert.equal(manifest.dependencies[name], version);
                 assert.equal(lock.packages[''].dependencies[name], version);
                 assert.equal(lock.packages[`node_modules/${name}`].version, installed.version);
+                assert.ok(!lock.packages[`node_modules/${name}`].resolved?.startsWith('file:'), 'Lockfiles must not depend on local tarball paths.');
                 if (name === '@azure/functions') {
                     assert.match(installed.version, /^4\.\d+\.\d+(?:\+[\w.-]+)?$/);
                     assert.ok(Number(installed.version.split('.')[1]) >= 17);
@@ -199,12 +204,27 @@ for (const [appName, expectedNames] of selected) {
             assert.ok(!registrations.has(name), `Duplicate function: ${name}`);
             registrations.set(name, options);
         };
+        const previousPollingEnabled = process.env.EnablePollingSamples;
         try {
             const functionsDir = path.join(appRoot, 'dist/functions');
+            const polling = pollingSamples[appName];
+            if (polling) {
+                await t.test('polling samples are opt-in', async () => {
+                    delete process.env.EnablePollingSamples;
+                    await import(`${pathToFileURL(path.join(functionsDir, polling.file)).href}?disabled`);
+                    assert.equal(registrations.size, 0, 'Unconfigured polling samples must not register listeners.');
+                });
+            }
+            process.env.EnablePollingSamples = 'true';
             for (const file of (await readdir(functionsDir)).filter((file) => file.endsWith('.js')).sort()) {
                 await import(pathToFileURL(path.join(functionsDir, file)).href);
             }
         } finally {
+            if (previousPollingEnabled === undefined) {
+                delete process.env.EnablePollingSamples;
+            } else {
+                process.env.EnablePollingSamples = previousPollingEnabled;
+            }
             app.connectorTrigger = original;
             for (const [namespace, methods] of originalNamespaces) {
                 extension.connectors[namespace] = methods;
@@ -215,6 +235,24 @@ for (const [appName, expectedNames] of selected) {
             assert.deepEqual([...registrations.keys()].sort(), [...expectedNames].sort());
         });
 
+        await t.test('polling options reach the host without changing webhook defaults', () => {
+            const polling = pollingSamples[appName];
+            for (const [name, { handler, ...options }] of registrations) {
+                if (name !== polling?.name) {
+                    assert.equal(options.deliveryMode, undefined, `${name} must retain default Webhook delivery.`);
+                    continue;
+                }
+                const { name: pollingName, file, ...batchOptions } = polling;
+                assert.deepEqual(options, {
+                    deliveryMode: 'Poll',
+                    connection: 'ConnectorNamespace',
+                    triggerConfigName: '%OnNewEmailPollTriggerConfigName%',
+                    ...batchOptions,
+                    targetPendingEventThreshold: 16,
+                });
+            }
+        });
+
         await t.test('every public helper except deprecated operations and duplicate aliases is exercised', () => {
             const connector = connectorSamples[appName];
             const expected = connector
@@ -223,7 +261,7 @@ for (const [appName, expectedNames] of selected) {
                     .map(([method]) => `${connector.namespace}.${method}`)
                     .filter((api) => !excludedApis.has(api))
                 : [];
-            assert.deepEqual([...apiCalls.values()].sort(), expected.sort());
+            assert.deepEqual([...new Set(apiCalls.values())].sort(), expected.sort());
             const nonHelperCount = appName === 'onedriveApp' ? Object.keys(oneDriveContentOperations).length
                 : appName === 'teamsApp' ? webhookTriggers.length : 0;
             assert.equal(apiCalls.size, connector ? expectedNames.length - nonHelperCount : 0);
@@ -300,7 +338,7 @@ tenantId=test`;
                         operationKeys.set(trigger.functionName, Object.keys(operations).find((key) => operations[key] === trigger.operationName));
                     }
                 }
-                assert.equal(operationKeys.size, expectedNames.length, 'Every registered function must have a deployment mapping.');
+                assert.equal(operationKeys.size, expectedNames.length, 'Every registered function must have an SDK operation mapping.');
                 for (const suffix of ['ps1', 'sh']) {
                     const hook = await readFile(path.join(appRoot, 'infra/scripts', `postdeploy.${suffix}`), 'utf8');
                     if (appName === 'sharepointApp') {
@@ -343,6 +381,10 @@ az() {
                         assert.equal(hook.match(/\bCalendarGetOnNewItemsV3\b/g)?.length, 1, 'Create only one new-calendar subscription.');
                     }
                     for (const [name, key] of operationKeys) {
+                        if (registrations.get(name).deliveryMode === 'Poll') {
+                            assert.ok(!hook.includes(name), 'Webhook deployment hooks must not provision polling samples.');
+                            continue;
+                        }
                         const operation = operations[key];
                         assert.equal(typeof operation, 'string', `Missing SDK operation for ${name}.`);
                         const matches = appName === 'teamsApp' && webhookTriggers.some((trigger) => trigger.functionName === name)
@@ -392,6 +434,11 @@ az() {
             const items = [itemFor(appName, name, 1), itemFor(appName, name, 2)];
             const batch = { body: { value: items }, headers: { 'x-test': 'preserved' } };
             const single = { body: items[0] };
+            const pollBatch = [
+                { body: items[0], headers: { 'x-test': 'first' } },
+                { body: { value: [items[1]] }, headers: { 'x-test': 'second' } },
+            ];
+            const pollCollection = [{ body: { value: items }, headers: { 'x-test': 'preserved' } }];
             const cases = [
                 ['batch object', batch, batch, 2],
                 ['batch JSON', JSON.stringify(batch), batch, 2],
@@ -401,6 +448,10 @@ az() {
                 ['missing body', {}, {}, 0],
                 ['null payload', null, {}, 0],
                 ['malformed JSON', '{invalid', '{invalid', 0],
+                ['poll envelopes object', pollBatch, pollBatch, 2],
+                ['poll envelopes JSON', JSON.stringify(pollBatch), pollBatch, 2],
+                ['poll collection envelope', pollCollection, pollCollection, 2],
+                ['empty poll batch', [], [], 0],
             ];
 
             if (appName === 'salesforceApp' || (appName === 'sharepointApp' && !/File$|Deleted/.test(name))) {
@@ -427,6 +478,12 @@ az() {
                     for (let index = 1; index <= count; index++) {
                         assert.ok(logs.some((line) => line.includes(`sample-item-${index}`)), `Item ${index} must reach the handler.`);
                     }
+                    if (label.startsWith('poll ') && count === 2) {
+                        assert.ok(
+                            logs.findIndex((line) => line.includes('sample-item-1')) < logs.findIndex((line) => line.includes('sample-item-2')),
+                            'Polling must preserve envelope and item order.',
+                        );
+                    }
                     if (name === 'OnCalendarChangedItems' && count > 0) {
                         assert.ok(logs.some((line) => line.includes("Action: 'updated'")), 'Calendar changes must use the SDK ActionType field.');
                     }
@@ -441,6 +498,6 @@ if (cwd === path.resolve(root)) {
     await test('all 40 non-deprecated, non-duplicate typed registrations are covered across the sample apps', () => {
         assert.equal(publishedApis.size, 43);
         assert.deepEqual([...coveredApis].sort(), [...publishedApis].filter((api) => !excludedApis.has(api)).sort());
-        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 55);
+        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 57);
     });
 }

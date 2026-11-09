@@ -9,6 +9,7 @@ Azure Functions app demonstrating the generic `connectorTrigger<TItem>` API from
 | `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` |
 | `OnGenericTeamsChannelMessage` | Microsoft Teams | `ChatMessage` |
 | `OnGenericCustomConnectorEvent` | Custom connector | Inline `CustomConnectorItem` |
+| [OnGenericOffice365NewEmailPoll](src/functions/onGenericOffice365NewEmailPoll.ts) | Office 365 Outlook (opt-in Poll delivery) | `GraphClientReceiveMessage` |
 
 ## Choosing the API
 
@@ -19,7 +20,13 @@ Azure Functions app demonstrating the generic `connectorTrigger<TItem>` API from
 
 Each handler receives a `ConnectorTriggerContext<TItem>` with `items`, the normalized `payload`, the original `rawPayload`, and `toJSON()`. The generic API changes the TypeScript handler declaration, not the connector operation. A separate trigger configuration must route the desired operation to the exact registered function name.
 
-In `0.1.0-preview`, Azure Blob has no typed wrapper or metadata re-export. Its example imports the metadata model from `@azure/connectors/generated/AzureblobExtensions`. See the [complete typed sample catalog](../README.md#samples) for the nine supported namespaces.
+In `0.2.0-preview`, Azure Blob has no typed wrapper or metadata re-export. Its example imports the metadata model from `@azure/connectors/generated/AzureblobExtensions`. See the [complete typed sample catalog](../README.md#samples) for the nine supported namespaces.
+
+## Polling
+
+[onGenericOffice365NewEmailPoll.ts](src/functions/onGenericOffice365NewEmailPoll.ts) demonstrates the generic API with `deliveryMode: 'Poll'`, `cardinality: 'one'`, and up to four concurrent calls. Follow the [shared polling setup](../README.md#polling-samples), including `EnablePollingSamples=true`, the connection endpoint, and the Poll Trigger Config name. The example is disabled by default and is not provisioned by webhook setup instructions.
+
+One Poll event may contain several emails; the extension exposes them through `context.items` while preserving the original event in `context.rawPayload`.
 
 ## Prerequisites
 

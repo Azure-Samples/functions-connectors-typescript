@@ -2,7 +2,7 @@
 
 Azure Functions app demonstrating an Azure Blob Storage trigger using the generic `connectorTrigger<TItem>` API from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The handler is in [src/functions](src/functions/).
 
-Version `0.1.0-preview` no longer exports `connectors.azureblob` or `AzureBlobMetadata`. The sample imports `BlobMetadata` directly from `@azure/connectors/generated/AzureblobExtensions` under the alias `AzureBlobMetadata`, and uses `context.items`. Its function name and remote subscription remain unchanged.
+Version `0.2.0-preview` exports neither `connectors.azureblob` nor `AzureBlobMetadata`. The sample imports `BlobMetadata` directly from `@azure/connectors/generated/AzureblobExtensions` under the alias `AzureBlobMetadata`, and uses `context.items`. Its function name and remote subscription remain unchanged.
 
 | Function | Connector operation | Description |
 | -------- | ------------------- | ----------- |
