@@ -64,28 +64,9 @@ azd hooks run postdeploy
 
 ### Additional webhook inputs
 
-The shared terminal setup reads the Teams connector's Swagger for the namespace region and resolves dynamic schemas and picker values through the authenticated connector connection. It presents display names but uses the selected IDs, then builds nested subscription bodies. These inputs are collected each time you rerun the hook; only the original team/channel selections are saved.
+After OAuth consent, the postdeploy hook asks whether to configure or skip each additional trigger. For each trigger you configure, you are guided through a series of prompts specific to that connector operation. Depending on the operation, you select values from numbered lists or enter free-form text. The prompts may change based on your earlier selections, and required inputs must be provided before the trigger is created.
 
-| Trigger | Input experience |
-| ------- | ---------------- |
-| When I'm @mentioned | Pick the message type (chat or channel), then fill the connector's dynamically supplied fields and pickers |
-| When someone reacted to a message in chat | Pick first/every reaction and whose reactions; enter the reaction key if the connector exposes no enumerated choices; select the message target |
-| When a new chat message is added | No chat picker: monitors chats the connected user participates in |
-| When keywords are mentioned | Pick the message type/target and enter comma-separated keywords |
-| When a new message is added to a chat or channel | Pick the message type and the connector-supplied target fields |
-| When a transcript or recording is available | Choose one of the three scopes below, then supply the fields returned for that scope |
-
-Transcript and recording setup each present their own three-way scope picker:
-
-| Scope | Connector value | Example |
-| ----- | --------------- | ------- |
-| Meetings that you organized | `user` | Available artifacts from meetings you organized |
-| A specific meeting you organized | `meeting` | Artifacts from your weekly project sync; supply the meeting-specific inputs requested by the connector |
-| Ad-hoc calls you're in | `adhocCallUser` | Available artifacts from unscheduled calls you participate in |
-
-The helper resolves `GetSubscriptionScopeSchema` after you select the scope; it does not guess meeting identifiers or scope-body fields. Chat/channel webhook bodies similarly use `GetWebhookTriggerRequestSchema`. Fields offering connector-backed choices use numbered pickers, static enums use menus, and free-form fields use text prompts. Required fields cannot be left blank.
-
-Subscriptions use a single nested parameter named `body`, even when the Swagger calls it `requestBody`. Connector Namespace supplies the internal subscription callback URL; do not substitute the Function App URL in that body.
+These operation-specific inputs are collected each time you rerun the hook; only the original team/channel selections are saved.
 
 Some choices require extra connector permissions or tenant access. Empty/failed picker responses, unavailable operations, or unsupported schemas stop setup rather than creating guessed configurations. Rerun the hook to retry or explicitly skip an unavailable trigger. Skipping a new trigger omits its configuration for that run; its handler still registers, and existing deployed configurations are not automatically deleted.
 
