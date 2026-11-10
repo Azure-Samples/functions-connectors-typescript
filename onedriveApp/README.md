@@ -43,13 +43,13 @@ The Preview Functions Extension Bundle is already configured in [host.json](host
 
 ## Connector configuration
 
-The selected folder ID is saved as `ONEDRIVE_FOLDER_ID` on the azd environment. To make a saved folder available in the picker, set the connector's folder ID in advance (`root` for the drive root, otherwise the `Id` returned by the connector's folder listing):
+The selected folder ID is saved as `ONEDRIVE_FOLDER_ID` on the azd environment. To make a saved folder available in the picker, set the `Id` returned by the connector's folder listing:
 
 ```sh
-azd env set ONEDRIVE_FOLDER_ID "root"
+azd env set ONEDRIVE_FOLDER_ID "<connector-folder-id>"
 ```
 
-Choose the saved value in the picker to avoid browsing. Folder listing supports root arrays and the business connector's paged `value` envelope using the SDK's double-encoded `foldersV2` route. The picker shows the returned page; enter a folder ID manually if it is not listed. A saved folder setting does not bypass required OAuth consent. To repeat connection and trigger setup without redeploying:
+Choose the saved value in the picker to avoid browsing. The drive root is a browsing entry point only; the literal `root` is not a valid trigger folder ID and cannot be selected, reused from saved settings, or entered manually. Select a folder returned by the connector instead. Folder listing supports root arrays and the business connector's paged `value` envelope using the SDK's double-encoded `foldersV2` route. The picker shows the returned page; enter a folder ID manually if it is not listed. A saved folder setting does not bypass required OAuth consent. To repeat connection and trigger setup without redeploying:
 
 ```sh
 azd hooks run postdeploy

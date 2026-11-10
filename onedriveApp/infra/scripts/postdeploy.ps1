@@ -312,8 +312,7 @@ function Invoke-ConnectionRequest {
 
 function Select-OneDriveFolderInteractive {
     param([string] $CurrentSavedId)
-    # Stack of [pscustomobject]@{ id = ...; path = ... }. id 'root' is the
-    # special OneDrive connector token for the drive root.
+    # 'root' is only a navigation placeholder, not a trigger folder ID.
     $stack = New-Object System.Collections.Generic.Stack[object]
     $stack.Push([pscustomobject]@{ id = 'root'; path = '/' })
 
@@ -342,9 +341,12 @@ function Select-OneDriveFolderInteractive {
         }
 
         $choices = @()
-        $pickId = if ($current.id -eq 'root') { 'root' } else { $current.id }
-        $choices += [pscustomobject]@{ display = "[OK] Use this folder ($($current.path))"; action = 'pick'; targetId = $pickId; target = $null }
-        if ($CurrentSavedId -and $stack.Count -eq 1) {
+        if ($current.id -ne 'root') {
+            $choices += [pscustomobject]@{ display = "[OK] Use this folder ($($current.path))"; action = 'pick'; targetId = $current.id; target = $null }
+        } else {
+            Write-Host "Select a folder below; 'root' is only a navigation placeholder, not a trigger folder ID." -ForegroundColor Yellow
+        }
+        if ($CurrentSavedId -and $CurrentSavedId -ne 'root' -and $stack.Count -eq 1) {
             $choices += [pscustomobject]@{ display = "(keep current saved: $CurrentSavedId)"; action = 'keep'; targetId = $CurrentSavedId; target = $null }
         }
         if ($stack.Count -gt 1) {
@@ -372,6 +374,11 @@ function Select-OneDriveFolderInteractive {
             'down'   { $stack.Push($picked.target) }
             'manual' {
                 $manual = Read-Host 'OneDrive folder id'
+                if ($manual) { $manual = $manual.Trim() }
+                if ($manual -eq 'root') {
+                    Write-Host "Enter a folder Id returned by the connector, not 'root'." -ForegroundColor Yellow
+                    break
+                }
                 if (-not [string]::IsNullOrWhiteSpace($manual)) { return $manual.Trim() }
             }
             'cancel' { return $null }

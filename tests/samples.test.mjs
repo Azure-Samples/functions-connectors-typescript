@@ -328,6 +328,43 @@ tenantId=test`;
                 }
             });
         }
+        if (appName === 'onedriveApp' && process.platform !== 'win32') {
+            await t.test('folder picker rejects root and returns the selected connector folder ID', async () => {
+                const hook = await readFile(path.join(appRoot, 'infra/scripts/postdeploy.sh'), 'utf8');
+                const definition = hook.match(/^select_onedrive_folder\(\) \{[\s\S]*?^\}/m)?.[0];
+                assert.ok(definition);
+                const mocks = `
+connection_invoke() {
+    case "$1" in
+        /datasets/default/folders) echo '[{"Name":"Child","Id":"child-id","IsFolder":true}]' ;;
+        /datasets/default/foldersV2/child-id) echo '{"value":[]}' ;;
+        *) return 1 ;;
+    esac
+}
+urlencode() { printf '%s' "$1"; }
+select_from_list() {
+    printf '%s\\n' "$@" >&2
+    local choice
+    read -r choice || return 1
+    printf '%s' "$choice"
+}`;
+                for (const [saved, input, expected] of [
+                    ['root', '1\nroot\n0\n0\n', 'child-id'],
+                    ['saved-id', '0\n', 'saved-id'],
+                    ['root', '2\n', ''],
+                ]) {
+                    const result = spawnSync('bash', ['-c', `${mocks}\n${definition}\nselect_onedrive_folder '${saved}'`], { input, encoding: 'utf8', timeout: 5000 });
+                    assert.ifError(result.error);
+                    assert.equal(result.status, expected ? 0 : 1, result.stderr);
+                    assert.equal(result.stdout, expected);
+                    assert.doesNotMatch(result.stderr, /Use this folder \(\/\)|keep current saved: root/);
+                    if (expected === 'child-id') {
+                        assert.match(result.stderr, /Enter a folder Id returned by the connector/);
+                        assert.equal(result.stderr.match(/\[OK\] Use this folder \(\/Child\)/g)?.length, 1, 'Rebuild the menu after navigation.');
+                    }
+                }
+            });
+        }
         if (appsWithHooks.has(appName)) {
             await t.test('both deployment hooks map functions to the SDK operation IDs', async () => {
                 const { sdk } = connectorSamples[appName];

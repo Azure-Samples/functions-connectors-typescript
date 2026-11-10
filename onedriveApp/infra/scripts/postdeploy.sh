@@ -313,9 +313,13 @@ select_onedrive_folder() {
         local body
         body=$(connection_invoke "$listingPath" 'get' || true)
 
-        local -a entries actions targetIds targetPaths
-        entries+=("[OK] Use this folder (${curPath})"); actions+=("pick"); targetIds+=("$curId"); targetPaths+=("")
-        if [[ -n "$savedId" && $top -eq 0 ]]; then
+        local -a entries=() actions=() targetIds=() targetPaths=()
+        if [[ "$curId" != "root" ]]; then
+            entries+=("[OK] Use this folder (${curPath})"); actions+=("pick"); targetIds+=("$curId"); targetPaths+=("")
+        else
+            echo "Select a folder below; 'root' is only a navigation placeholder, not a trigger folder ID." >&2
+        fi
+        if [[ -n "$savedId" && "$savedId" != "root" && $top -eq 0 ]]; then
             entries+=("(keep current saved: $savedId)"); actions+=("keep"); targetIds+=("$savedId"); targetPaths+=("")
         fi
         if [[ $top -gt 0 ]]; then
@@ -353,6 +357,10 @@ select_onedrive_folder() {
             manual)
                 local manual
                 read -r -p 'OneDrive folder id: ' manual
+                if [[ "$manual" == "root" ]]; then
+                    echo "Enter a folder Id returned by the connector, not 'root'." >&2
+                    continue
+                fi
                 if [[ -n "$manual" ]]; then printf '%s' "$manual"; return 0; fi
                 ;;
             cancel) return 1 ;;

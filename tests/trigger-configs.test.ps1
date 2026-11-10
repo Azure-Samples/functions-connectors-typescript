@@ -158,6 +158,10 @@ function Test-OneDriveFolderPicker {
     function Select-FromList {
         param([string] $Title, [object[]] $Items, [string] $LabelProperty)
         Assert-Condition (-not $InvalidPayload) 'The picker must abort an invalid listing before prompting.'
+        Assert-Condition (@($Items | Where-Object { $_.targetId -eq 'root' }).Count -eq 0) 'The root placeholder must never be selectable or reusable.'
+        if ($state.step -eq 0) {
+            Assert-Condition (@($Items | Where-Object { $_.action -eq 'pick' -or $_.action -eq 'keep' }).Count -eq 0) 'The drive root must only be a navigation entry point.'
+        }
         $action = if ($state.step -lt 2) { 'down' } else { 'pick' }
         $choices = @($Items | Where-Object { $_.action -eq $action })
         Assert-Condition ($choices.Count -eq 1) 'The folder picker must expose the returned folder.'
@@ -171,7 +175,7 @@ function Test-OneDriveFolderPicker {
         Assert-Condition ($state.paths.Count -eq 1) 'Invalid listing must stop folder traversal.'
         Write-Output 'PASS: OneDrive invalid listing is reported'
     } else {
-        $selected = Select-OneDriveFolderInteractive -CurrentSavedId '' 6>$null
+        $selected = Select-OneDriveFolderInteractive -CurrentSavedId 'root' 6>$null
         Assert-Condition ($selected -eq 'leaf/+id') 'OneDrive must support root arrays and paged folder bodies.'
         $expected = @($metadata.folderPaths.root, $metadata.folderPaths.child, $metadata.folderPaths.leaf)
         Assert-Condition (($state.paths -join '|') -eq ($expected -join '|')) 'OneDrive folder paths must match SDK double-encoding and foldersV2 routes.'
@@ -181,3 +185,30 @@ function Test-OneDriveFolderPicker {
 
 Test-OneDriveFolderPicker
 Test-OneDriveFolderPicker -InvalidPayload
+
+function Test-OneDriveManualFolderId {
+    param([string] $ManualId)
+    $ast = Read-ScriptAst (Join-Path $root 'onedriveApp\infra\scripts\postdeploy.ps1')
+    $selector = $ast.Find({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Select-OneDriveFolderInteractive'
+    }, $false)
+    $state = @{ step = 0 }
+    function Invoke-ConnectionRequest { return ,@() }
+    function Read-Host { return $ManualId }
+    function Select-FromList {
+        param([string] $Title, [object[]] $Items, [string] $LabelProperty)
+        $action = if ($state.step++ -eq 0) { 'manual' } else { 'cancel' }
+        return $Items | Where-Object { $_.action -eq $action }
+    }
+    Invoke-Expression $selector.Extent.Text
+    $selected = Select-OneDriveFolderInteractive -CurrentSavedId '' 6>$null
+    if ($ManualId.Trim() -eq 'root') {
+        Assert-Condition ($null -eq $selected -and $state.step -eq 2) 'A manually entered root must be rejected before cancellation.'
+    } else {
+        Assert-Condition ($selected -eq $ManualId -and $state.step -eq 1) 'A real manual connector ID must remain selectable.'
+    }
+    Write-Output 'PASS: OneDrive manual folder ID validation'
+}
+
+Test-OneDriveManualFolderId -ManualId ' root '
+Test-OneDriveManualFolderId -ManualId 'manual-folder-id'
