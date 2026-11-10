@@ -278,7 +278,7 @@ for (const [appName, expectedNames] of selected) {
                 const hook = await readFile(path.join(appRoot, 'infra/scripts/postdeploy.sh'), 'utf8');
                 const builders = appName === 'azureblobApp'
                     ? [
-                        ['set_connection_keybased_auth', "'testaccount' 'test-key'", { location: 'test', properties: { connectorName: 'azureblob', parameterValueSet: { name: 'keyBasedAuth', values: { accountName: { value: 'testaccount' }, accessKey: { value: 'test-key' } } } } }],
+                        ['set_connection_managed_identity_auth', '', { location: 'test', properties: { connectorName: 'azureblob', parameterValueSet: { name: 'managedIdentityAuth', values: {} }, connectionProperties: { authentication: { type: 'ManagedServiceIdentity' } } } }],
                         ['set_connection_access_policy', "'test-policy' 'test-principal'", { properties: { principal: { type: 'ActiveDirectory', identity: { objectId: 'test-principal', tenantId: 'test' } } } }],
                     ]
                     : [['connection_invoke', "'/datasets/default/folders' 'get'", { method: 'get', path: '/datasets/default/folders' }]];
@@ -309,7 +309,7 @@ az() {
     done
     return 1
 }
-azureLocation=test
+namespaceLocation=test
 tenantId=test`;
                         const result = spawnSync('bash', ['-c', `exec 3>&2\n${mocks}\n${definition}\n${name} ${args}`], { encoding: 'utf8', timeout: 5000 });
                         assert.ifError(result.error);
@@ -324,6 +324,97 @@ tenantId=test`;
                             assert.ok(file);
                             await assert.rejects(access(file), { code: 'ENOENT' }, 'The request file must be removed.');
                         }
+                    }
+                }
+            });
+        }
+        if (appName === 'azureblobApp' && process.platform !== 'win32') {
+            await t.test('Blob hook uses namespace MI and provisioned test storage', () => {
+                const values = {
+                    resourceGroupName: 'test-rg', connectorNamespaceName: 'test-namespace',
+                    azureblobConnectionName: 'test-connection', functionAppName: 'test-function',
+                    CONNECTOR_NAMESPACE_LOCATION: 'brazilsouth', AZURE_LOCATION: 'westus3',
+                    connectorNamespacePrincipalId: 'namespace-principal', functionAppPrincipalId: 'function-principal',
+                    AZURE_PRINCIPAL_ID: 'deployer-principal',
+                    monitoredStorageAccountName: 'testmonitoredaccount', monitoredContainerName: 'testcontainer',
+                };
+                const mocks = `
+azd() {
+    [[ "$*" == 'env get-values --output json' ]] || return 1
+    printf '%s\\n' "$BLOB_TEST_OUTPUTS"
+}
+az() {
+    local call="$*" body='' parameters=''
+    echo "TEST: command $call" >&2
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --body) body="$2"; shift ;;
+            --parameters) parameters="$2"; shift ;;
+        esac
+        shift
+    done
+    case "$call" in
+        'account show '*) echo test ;;
+        'extension show '*) echo connector-namespace ;;
+        'rest --method put '*)
+            echo "TEST: body $(jq -c . "\${body#@}")" >&2
+            if [[ "$BLOB_TEST_FAILURE" == connection && "$call" != *accessPolicies* ]]; then return 1; fi
+            if [[ "$BLOB_TEST_FAILURE" == policy && "$call" == *accessPolicies* ]]; then return 1; fi
+            ;;
+        'rest --method get '*) echo 'https://example.azureconnectors.com/runtime' ;;
+        'connector-namespace connection show '*)
+            if [[ "$BLOB_TEST_FAILURE" == ready ]]; then echo Ready
+            else echo Connected; fi
+            ;;
+        'functionapp keys list '*) echo test-extension-key ;;
+        'functionapp config appsettings set '*) ;;
+        'connector-namespace trigger delete '*) ;;
+        'connector-namespace trigger create '*)
+            echo "TEST: parameters $parameters" >&2
+            [[ "$BLOB_TEST_FAILURE" != trigger ]] || return 1
+            ;;
+        *) echo "Unexpected Azure command: $call" >&2; return 1 ;;
+    esac
+}
+source "$BLOB_TEST_HOOK"`;
+                for (const failure of ['', 'ready', 'missing', 'connection', 'policy', 'trigger']) {
+                    const outputs = { ...values };
+                    if (failure === 'missing') delete outputs.monitoredStorageAccountName;
+                    const result = spawnSync('bash', ['-c', mocks], {
+                        encoding: 'utf8', timeout: 5000,
+                        env: {
+                            ...process.env, BLOB_TEST_FAILURE: failure, BLOB_TEST_OUTPUTS: JSON.stringify(outputs),
+                            BLOB_TEST_HOOK: path.join(appRoot, 'infra/scripts/postdeploy.sh'),
+                        },
+                    });
+                    assert.ifError(result.error);
+                    assert.equal(result.status, ['', 'ready'].includes(failure) ? 0 : 1, result.stdout + result.stderr);
+                    assert.doesNotMatch(result.stderr, /Unexpected Azure command/);
+                    assert.doesNotMatch(result.stderr, /TEST: command rest --method delete/);
+                    const bodies = result.stderr.split('\n').filter((line) => line.startsWith('TEST: body '))
+                        .map((line) => JSON.parse(line.slice('TEST: body '.length)));
+                    if (failure === 'missing') {
+                        assert.equal(bodies.length, 0, 'Missing outputs must stop before updating the connection.');
+                    } else {
+                        assert.deepEqual(bodies[0], {
+                            location: 'brazilsouth',
+                            properties: {
+                                connectorName: 'azureblob', parameterValueSet: { name: 'managedIdentityAuth', values: {} },
+                                connectionProperties: { authentication: { type: 'ManagedServiceIdentity' } },
+                            },
+                        });
+                    }
+                    if (['', 'ready', 'trigger'].includes(failure)) {
+                        assert.deepEqual(bodies.slice(1).map((body) => body.properties.principal.identity.objectId),
+                            ['namespace-principal', 'function-principal', 'deployer-principal']);
+                        const parameters = result.stderr.split('\n').find((line) => line.startsWith('TEST: parameters '));
+                        assert.ok(parameters);
+                        assert.deepEqual(JSON.parse(parameters.slice('TEST: parameters '.length)), [
+                            { name: 'dataset', value: 'testmonitoredaccount' },
+                            { name: 'folderId', value: Buffer.from('%2Ftestcontainer').toString('base64') },
+                        ]);
+                    } else {
+                        assert.doesNotMatch(result.stderr, /TEST: parameters/);
                     }
                 }
             });

@@ -10,7 +10,7 @@ Version `0.2.0-preview` exports neither `connectors.azureblob` nor `AzureBlobMet
 
 ## Prerequisites
 
-Follow the [shared prerequisites](../README.md#prerequisites). You also need an Azure Storage account, its access key, and an existing blob container to watch.
+Follow the [shared prerequisites](../README.md#prerequisites). Deployment creates the storage account and container to watch and configures the connection with managed identity.
 
 ## Deploy to Azure
 
@@ -22,21 +22,24 @@ azd auth login
 azd up
 ```
 
-The deployment builds the TypeScript app and runs the [postup hook](azure.yaml). Enter the storage account name or blob endpoint, access key, and container name when prompted. The hook configures the connection and creates one trigger.
+The deployment builds the TypeScript app and runs the [postup hook](azure.yaml). The hook configures the connection with the namespace's system-assigned managed identity and creates one trigger targeting the provisioned test storage account's `testcontainer`.
 
 ## Resources provisioned
 
 - Flex Consumption Function App with a system-assigned managed identity.
-- Storage account, Application Insights, and Log Analytics workspace.
-- Connector Namespace and Azure Blob Storage connection.
+- Host/deployment storage account, Application Insights, and Log Analytics workspace.
+- Separate monitored storage account with a private `testcontainer` container and shared-key authentication disabled.
+- Connector Namespace with a system-assigned managed identity and an Azure Blob Storage connection.
 
-The app's provisioned storage account supports the Functions host; the connector watches the account and container you select. The Preview Functions Extension Bundle is already configured in [host.json](host.json).
+The Functions host and deployment package continue to use the original storage account. The connector watches only the separate test account. The Preview Functions Extension Bundle is already configured in [host.json](host.json).
 
 ## Connector configuration
 
-The hook saves the non-secret account and container values as `BLOB_ACCOUNT` and `BLOB_CONTAINER` on the azd environment. The access key is prompted for separately and is not saved as an azd environment value.
+The namespace's managed identity has **Storage Blob Data Reader**, scoped to `testcontainer`, to list/read blobs and detect changes. The Function App's identity retains its host/deployment storage permissions and permission to use the connection; it is not granted access to the monitored account. The deployer receives **Storage Blob Data Contributor** on `testcontainer` to upload test blobs.
 
-For V2 operations, use the storage account name as the connector's custom value; see the [connector limitations](https://learn.microsoft.com/connectors/azureblob/#general-known-issues-and-limitations). The hook derives `dataset` and the encoded `folderId` from your selections.
+Both hooks read `monitoredStorageAccountName` and `monitoredContainerName` from infrastructure outputs and derive `dataset` and the encoded `folderId`. For V2 operations, `dataset` is the storage account name; see the [connector limitations](https://learn.microsoft.com/connectors/azureblob/#general-known-issues-and-limitations).
+
+Storage RBAC changes can take up to 10 minutes to propagate.
 
 To repeat connection and trigger setup without redeploying:
 
@@ -46,9 +49,19 @@ azd hooks run postup
 
 ## Verify
 
-Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Azure Blob Storage connection in `Connected` state and one trigger in `Enabled` state. See the [example namespace overview](docs/connectors-namespace-overview-blob.png).
+Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Azure Blob Storage connection in `Ready` or `Connected` state and one trigger in `Enabled` state. See the [example namespace overview](docs/connectors-namespace-overview-blob.png).
 
-Add or modify a blob in the selected container, then inspect the Function App logs in Application Insights. If the connection is unauthenticated or the trigger is missing, rerun the hook and enter the account details again.
+Add or modify a blob in `testcontainer` in the account reported by the hook, then inspect the Function App logs in Application Insights. This is a polling trigger, so delivery is not immediate.
+
+To upload using your signed-in Azure CLI identity:
+
+```sh
+az storage blob upload --auth-mode login \
+  --account-name "$(azd env get-value monitoredStorageAccountName)" \
+  --container-name testcontainer --name test.txt --file ./test.txt --overwrite
+```
+
+Create `test.txt` locally first. If authorization fails just after provisioning, allow time for RBAC propagation and retry. If the connection or trigger needs reconfiguring, rerun `azd hooks run postup`.
 
 ## Run locally
 

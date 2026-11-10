@@ -136,6 +136,81 @@ foreach ($case in $cases) {
     Write-Output "PASS: $label ($($configs.Count) triggers)"
 }
 
+function Test-BlobManagedIdentityConfiguration {
+    $ast = Read-ScriptAst (Join-Path $root 'azureblobApp\infra\scripts\postdeploy.ps1')
+    $outputs = [pscustomobject] @{
+        CONNECTOR_NAMESPACE_LOCATION = 'brazilsouth'
+        connectorNamespacePrincipalId = 'namespace-principal'
+        monitoredStorageAccountName = 'testmonitoredaccount'
+        monitoredContainerName = 'testcontainer'
+    }
+    $variables = @('namespaceLocation', 'namespacePrincipalId', 'accountInput', 'containerInput', 'urlEncodedPath', 'folderIdBytes', 'folderId', 'triggers')
+    foreach ($statement in $ast.EndBlock.Statements) {
+        if ($statement -is [System.Management.Automation.Language.AssignmentStatementAst] -and $statement.Left.VariablePath.UserPath -in $variables) {
+            Invoke-Expression $statement.Extent.Text
+        }
+    }
+    Assert-Condition ($triggers.Count -eq 1) 'Blob must configure one trigger.'
+    $dataset = @($triggers[0].parameters | Where-Object name -eq 'dataset')
+    $folder = @($triggers[0].parameters | Where-Object name -eq 'folderId')
+    Assert-Condition ($dataset.Count -eq 1 -and $dataset[0].value -eq 'testmonitoredaccount') 'Blob must watch the provisioned monitored account.'
+    Assert-Condition ($folder.Count -eq 1 -and [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($folder[0].value)) -ceq '%2Ftestcontainer') 'Blob must encode the provisioned testcontainer path.'
+    Assert-Condition (@($ast.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Read-Host'
+    }, $true)).Count -eq 0) 'MI setup must not prompt for credentials.'
+
+    $definition = $ast.Find({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Set-ConnectionManagedIdentityAuth'
+    }, $false)
+    Assert-Condition ($null -ne $definition) 'Blob MI request builder not found.'
+    $state = @{ exitCode = 0; path = ''; body = $null }
+    function az {
+        $cliArgs = @($args)
+        $index = [Array]::IndexOf($cliArgs, '--body')
+        Assert-Condition ($index -ge 0) 'Expected a connection PUT request.'
+        $state.path = $cliArgs[$index + 1].Substring(1)
+        $state.body = Get-Content -Raw $state.path | ConvertFrom-Json
+        $global:LASTEXITCODE = $state.exitCode
+    }
+    Invoke-Expression $definition.Extent.Text
+    foreach ($exitCode in @(0, 1)) {
+        $state.exitCode = $exitCode
+        $success = Set-ConnectionManagedIdentityAuth
+        Assert-Condition ($success -eq ($exitCode -eq 0)) 'Blob MI builder must propagate Azure PUT failures.'
+        Assert-Condition (-not (Test-Path $state.path)) 'Blob MI request file must be removed after success or failure.'
+        Assert-Condition ($state.body.location -eq 'brazilsouth') 'Connection location must match the namespace, not the Function App.'
+        Assert-Condition ($state.body.properties.parameterValueSet.name -eq 'managedIdentityAuth') 'Blob must use MI authentication.'
+        Assert-Condition (@($state.body.properties.parameterValueSet.values.PSObject.Properties).Count -eq 0) 'Blob MI must not send user credentials.'
+        Assert-Condition ($state.body.properties.connectionProperties.authentication.type -eq 'ManagedServiceIdentity') 'Blob must configure managed service identity authentication.'
+        Assert-Condition ($null -eq $state.body.properties.connectionProperties.authentication.identity) 'System-assigned auth must not specify another identity.'
+    }
+    Write-Output 'PASS: Blob namespace MI payload, cleanup, and provisioned test storage'
+}
+
+Test-BlobManagedIdentityConfiguration
+
+function Test-BlobConnectionReadiness {
+    $ast = Read-ScriptAst (Join-Path $root 'azureblobApp\infra\scripts\postdeploy.ps1')
+    $state = @{ mode = '' }
+    function az {
+        $call = $args -join ' '
+        $global:LASTEXITCODE = 0
+        if ($call -like 'connector-namespace connection show *') { return $state.mode }
+        throw "Unexpected Azure command: $call"
+    }
+    $waitDefinition = $ast.Find({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Wait-ConnectionReady'
+    }, $false)
+    Invoke-Expression $waitDefinition.Extent.Text
+    foreach ($status in @('Ready', 'Connected', 'Error')) {
+        $state.mode = $status
+        Assert-Condition ((Wait-ConnectionReady -TimeoutSeconds 1 6>$null) -eq $status) 'Return terminal MI connection status.'
+    }
+    Write-Output 'PASS: Blob managed identity connection readiness'
+}
+
+Test-BlobConnectionReadiness
+
 function Test-OneDriveFolderPicker {
     param([switch] $InvalidPayload)
     $ast = Read-ScriptAst (Join-Path $root 'onedriveApp\infra\scripts\postdeploy.ps1')

@@ -60,3 +60,7 @@ output connectorNamespaceName string = resources.outputs.connectorNamespaceName
 output azureblobConnectionName string = resources.outputs.azureblobConnectionName
 output functionAppPrincipalId string = resources.outputs.functionAppPrincipalId
 output AZURE_PRINCIPAL_ID string = userPrincipalId
+output connectorNamespacePrincipalId string = resources.outputs.connectorNamespacePrincipalId
+output CONNECTOR_NAMESPACE_LOCATION string = resources.outputs.connectorNamespaceLocation
+output monitoredStorageAccountName string = resources.outputs.monitoredStorageAccountName
+output monitoredContainerName string = resources.outputs.monitoredContainerName

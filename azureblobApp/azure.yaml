@@ -20,8 +20,8 @@ hooks:
         windows:
             shell: pwsh
             run: ./infra/scripts/postdeploy.ps1
-            interactive: true
+            interactive: false
         posix:
             shell: sh
             run: ./infra/scripts/postdeploy.sh
-            interactive: true
+            interactive: false

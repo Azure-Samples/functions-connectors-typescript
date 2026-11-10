@@ -2,11 +2,8 @@
 // Licensed under the MIT License.
 
 // ----------------------------------------------------------------------------
-// Connector Namespace shell only. The Azure Blob connection itself, its
-// access policies, and any keyBasedAuth parameter values are created by
-// the postdeploy script (infra/scripts/postdeploy.ps1 / .sh) AFTER the
-// user has supplied a storage account / access key — so the connection
-// never appears in the portal in an `Error` state.
+// The postup hook configures the Azure Blob connection to use this
+// namespace's system-assigned identity and creates connection access policies.
 // ----------------------------------------------------------------------------
 
 @minLength(1)
@@ -31,3 +28,5 @@ output resourceId string = connectorNamespace.id
 
 @description('The name of the Connector Namespace.')
 output name string = connectorNamespace.name
+
+output principalId string = connectorNamespace.identity.principalId
