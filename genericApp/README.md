@@ -24,7 +24,7 @@ In `0.2.0-preview`, Azure Blob has no typed wrapper or metadata re-export. Its e
 
 ## Polling
 
-[onGenericOffice365NewEmailPoll.ts](src/functions/onGenericOffice365NewEmailPoll.ts) demonstrates the generic API with `deliveryMode: 'Poll'`, `cardinality: 'one'`, and up to four concurrent calls. Follow the [shared polling setup](../README.md#polling-samples), including `EnablePollingSamples=true`, the connection endpoint, and the Poll Trigger Config name. The example is disabled by default and is not provisioned by webhook setup instructions.
+[onGenericOffice365NewEmailPoll.ts](src/functions/onGenericOffice365NewEmailPoll.ts) demonstrates the generic API with `deliveryMode: DeliveryMode.Poll` and up to four concurrent calls. Cardinality is omitted because Functions `4.17.1` defaults to `Cardinality.One`. Follow the [shared polling setup](../README.md#polling-samples), including `EnablePollingSamples=true`, the connection endpoint, and the Poll Trigger Config name. The example is disabled by default and is not provisioned by webhook setup instructions.
 
 One Poll event may contain several emails; the extension exposes them through `context.items` while preserving the original event in `context.rawPayload`.
 

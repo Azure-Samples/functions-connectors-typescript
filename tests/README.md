@@ -24,7 +24,7 @@ On other platforms, install and build each app, then run the same Node test runn
 
 The suite checks:
 
-- Every manifest, lockfile, and installed package uses the requested `@azure/connectors@0.4.0-preview`, `@azure/functions@^4.17.0`, and `@azure/functions-extensions-connectors@0.2.0-preview` releases, plus CommonJS and ESM SDK entry-point loading.
+- Every manifest, lockfile, and installed package uses the requested `@azure/connectors@0.4.0-preview`, `@azure/functions@^4.17.1`, and `@azure/functions-extensions-connectors@0.2.0-preview` releases, plus CommonJS and ESM SDK entry-point loading.
 - The extension and app resolve the same SDK installation, and host/deployment runtime settings match Node.js 24.
 - All azd project names use schema-compliant lowercase slugs, and deployment ignore files protect local settings, azd state, and Azurite data.
 - All 57 expected sample functions register through the connector extension or raw host API when polling is enabled. Both polling files are also checked with the opt-in setting absent.
@@ -34,7 +34,7 @@ The suite checks:
 - Both Teams hooks use the shared authenticated setup for seven additional operations from the installed SDK.
 - Twelve payload scenarios per normalized handler: object and JSON batches, object and JSON single items, empty batches, missing bodies, null payloads, malformed JSON, mixed polling envelope arrays as objects and JSON, a polling envelope containing multiple items, and an empty polling array.
 - Eight opaque-content scenarios per raw OneDrive content handler cover binary buffers, binary/text envelopes, JSON envelopes, raw text, JSON file contents, empty content, and null payloads; payload identity is preserved and file contents are never logged.
-- Polling binding options reach the host unchanged, single-event concurrency is separate from batching, webhook defaults are preserved, and webhook hooks do not provision polling listeners.
+- Polling uses the exported `DeliveryMode` and `Cardinality` enums. The real Functions trigger builder supplies `Webhook` and `one` when omitted, single-event concurrency is separate from explicit `Many` batching, and webhook hooks do not provision polling listeners.
 - Additional flat-record batch and single-item scenarios for all ten dynamic SharePoint and Salesforce handlers; logging must not depend on a generated `dynamicProperties` wrapper being present.
 - Items reach each handler in order, original payloads and polling metadata are preserved, calendar changes use `ActionType`, and malformed JSON produces a warning.
 
@@ -62,10 +62,10 @@ If installation fails, do not substitute older packages or assume that previousl
 
 The updated extension depends on `@azure/connectors@^0.4.0-preview`, so all apps pin the matching `0.4.0-preview` SDK and share that installation with the extension.
 
-If these previews are not yet available in your registry, install trusted local tarballs from the chosen app directory without changing the portable version pins or lockfile:
+If these releases are not yet available in your registry, install trusted local tarballs from the chosen app directory without changing the portable version pins or lockfile:
 
 ```powershell
-npm install --no-save --package-lock=false "C:\packages\azure-connectors-0.4.0-preview.tgz" "C:\packages\azure-functions-extensions-connectors-0.2.0-preview.tgz"
+npm install --no-save --package-lock=false "C:\packages\azure-functions-4.17.1.tgz" "C:\packages\azure-connectors-0.4.0-preview.tgz" "C:\packages\azure-functions-extensions-connectors-0.2.0-preview.tgz"
 npm test
 ```
 

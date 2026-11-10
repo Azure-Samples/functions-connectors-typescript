@@ -39,7 +39,7 @@ const samples = {
     ],
 };
 const pollingSamples = {
-    genericApp: { name: 'OnGenericOffice365NewEmailPoll', file: 'onGenericOffice365NewEmailPoll.js', cardinality: 'one', maxBatchSize: 1, maxConcurrentCalls: 4 },
+    genericApp: { name: 'OnGenericOffice365NewEmailPoll', file: 'onGenericOffice365NewEmailPoll.js', maxBatchSize: 1, maxConcurrentCalls: 4 },
     office365App: { name: 'OnNewEmailPoll', file: 'onNewEmailPoll.js', cardinality: 'many', maxBatchSize: 4 },
 };
 const connectorSamples = {
@@ -55,7 +55,7 @@ const connectorSamples = {
 };
 const dependencies = {
     '@azure/connectors': '0.4.0-preview',
-    '@azure/functions': '^4.17.0',
+    '@azure/functions': '^4.17.1',
     '@azure/functions-extensions-connectors': '0.2.0-preview',
 };
 const appsWithHooks = new Set(['office365App', 'onedriveApp', 'sharepointApp', 'teamsApp']);
@@ -138,8 +138,9 @@ for (const [appName, expectedNames] of selected) {
                 assert.equal(lock.packages[`node_modules/${name}`].version, installed.version);
                 assert.ok(!lock.packages[`node_modules/${name}`].resolved?.startsWith('file:'), 'Lockfiles must not depend on local tarball paths.');
                 if (name === '@azure/functions') {
-                    assert.match(installed.version, /^4\.\d+\.\d+(?:\+[\w.-]+)?$/);
-                    assert.ok(Number(installed.version.split('.')[1]) >= 17);
+                    const match = installed.version.match(/^4\.(\d+)\.(\d+)(?:\+[\w.-]+)?$/);
+                    assert.ok(match, 'The sample requires a stable Functions v4 release.');
+                    assert.ok(Number(match[1]) > 17 || (Number(match[1]) === 17 && Number(match[2]) >= 1), 'The sample requires Functions 4.17.1 or later.');
                 } else {
                     assert.equal(installed.version, version);
                 }
@@ -175,7 +176,7 @@ for (const [appName, expectedNames] of selected) {
             assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
         });
 
-        const { app } = require('@azure/functions');
+        const { app, trigger, DeliveryMode, Cardinality } = require('@azure/functions');
         const extensionManifest = JSON.parse(await readFile(path.join(appRoot, 'node_modules/@azure/functions-extensions-connectors/package.json'), 'utf8'));
         const extension = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/functions-extensions-connectors', extensionManifest.module)).href);
         const original = app.connectorTrigger;
@@ -236,15 +237,20 @@ for (const [appName, expectedNames] of selected) {
         });
 
         await t.test('polling options reach the host without changing webhook defaults', () => {
+            assert.deepEqual(DeliveryMode, { Webhook: 'Webhook', Poll: 'Poll' });
+            assert.deepEqual(Cardinality, { One: 'one', Many: 'many' });
             const polling = pollingSamples[appName];
             for (const [name, { handler, ...options }] of registrations) {
+                const binding = trigger.connectorTrigger(options);
+                assert.equal(binding.deliveryMode, name === polling?.name ? DeliveryMode.Poll : DeliveryMode.Webhook);
+                assert.equal(binding.cardinality, options.cardinality ?? Cardinality.One);
                 if (name !== polling?.name) {
                     assert.equal(options.deliveryMode, undefined, `${name} must retain default Webhook delivery.`);
                     continue;
                 }
                 const { name: pollingName, file, ...batchOptions } = polling;
                 assert.deepEqual(options, {
-                    deliveryMode: 'Poll',
+                    deliveryMode: DeliveryMode.Poll,
                     connection: 'ConnectorNamespace',
                     triggerConfigName: '%OnNewEmailPollTriggerConfigName%',
                     ...batchOptions,

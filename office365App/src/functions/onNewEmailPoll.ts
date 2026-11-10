@@ -1,15 +1,15 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the MIT License.
 
-import { InvocationContext } from '@azure/functions';
+import { Cardinality, DeliveryMode, InvocationContext } from '@azure/functions';
 import { connectors, EmailTriggerContext } from '@azure/functions-extensions-connectors';
 
 if (process.env.EnablePollingSamples === 'true') {
     connectors.office365.onNewEmail('OnNewEmailPoll', {
-        deliveryMode: 'Poll',
+        deliveryMode: DeliveryMode.Poll,
         connection: 'ConnectorNamespace',
         triggerConfigName: '%OnNewEmailPollTriggerConfigName%',
-        cardinality: 'many',
+        cardinality: Cardinality.Many,
         maxBatchSize: 4,
         targetPendingEventThreshold: 16,
         handler: async (context: EmailTriggerContext, invocationContext: InvocationContext) => {

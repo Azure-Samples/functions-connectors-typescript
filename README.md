@@ -33,12 +33,14 @@ All apps use:
 ```json
 {
   "@azure/connectors": "0.4.0-preview",
-  "@azure/functions": "^4.17.0",
+  "@azure/functions": "^4.17.1",
   "@azure/functions-extensions-connectors": "0.2.0-preview"
 }
 ```
 
 The connector extension requires **Node.js 24+**. Package engines, Node.js type definitions, and the deployment templates use Node.js 24.
+
+Functions `4.17.1` exports the `DeliveryMode` and `Cardinality` enums. Polling samples use `DeliveryMode.Poll`; the batched Outlook sample explicitly selects `Cardinality.Many`. Single-event examples omit cardinality and rely on its `Cardinality.One` default. Webhook examples also omit delivery mode, which defaults to `DeliveryMode.Webhook`.
 
 The SDK version is upgraded alongside the extension because `0.2.0-preview` requires `@azure/connectors@^0.4.0-preview`. If your registry does not yet expose these releases, use the [local tarball installation instructions](tests/README.md#registry-and-lockfile-failures).
 

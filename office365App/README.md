@@ -20,7 +20,7 @@ The [Connector Namespaces portal](https://connectors.azure.com/) also lists **Wh
 
 ## Polling
 
-[onNewEmailPoll.ts](src/functions/onNewEmailPoll.ts) is a dedicated batched polling example, separate from the existing webhook handler. It uses `deliveryMode: 'Poll'`, `cardinality: 'many'`, and a maximum of four Poll events per invocation. Follow the [shared polling setup](../README.md#polling-samples), including `EnablePollingSamples=true`, the connection endpoint, and the Poll Trigger Config name.
+[onNewEmailPoll.ts](src/functions/onNewEmailPoll.ts) is a dedicated batched polling example, separate from the existing webhook handler. It uses `deliveryMode: DeliveryMode.Poll`, `cardinality: Cardinality.Many`, and a maximum of four Poll events per invocation. These enums are exported by `@azure/functions` starting in `4.17.1`; batching must remain explicit because cardinality defaults to `Cardinality.One`. Follow the [shared polling setup](../README.md#polling-samples), including `EnablePollingSamples=true`, the connection endpoint, and the Poll Trigger Config name.
 
 The sample is disabled by default. Deployment hooks still create only the existing webhook subscriptions; create and authorize the Poll Trigger Config separately. No public callback or tunnel is needed for local polling. `context.emails` combines emails from all events in order, while `context.rawPayload` preserves the full envelope array.
 

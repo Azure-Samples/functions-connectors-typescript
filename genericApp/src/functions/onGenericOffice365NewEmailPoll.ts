@@ -1,15 +1,14 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the MIT License.
 
-import { InvocationContext } from '@azure/functions';
+import { DeliveryMode, InvocationContext } from '@azure/functions';
 import { connectorTrigger, GraphClientReceiveMessage } from '@azure/functions-extensions-connectors';
 
 if (process.env.EnablePollingSamples === 'true') {
     connectorTrigger<GraphClientReceiveMessage>('OnGenericOffice365NewEmailPoll', {
-        deliveryMode: 'Poll',
+        deliveryMode: DeliveryMode.Poll,
         connection: 'ConnectorNamespace',
         triggerConfigName: '%OnNewEmailPollTriggerConfigName%',
-        cardinality: 'one',
         maxBatchSize: 1,
         maxConcurrentCalls: 4,
         targetPendingEventThreshold: 16,
