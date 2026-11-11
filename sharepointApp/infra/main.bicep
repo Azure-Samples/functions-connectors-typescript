@@ -34,6 +34,41 @@ param assignStorageRoles bool = true
 @description('When true, the function app uses managed identity for AzureWebJobsStorage and the Flex Consumption package container. When false, falls back to a storage account key connection string (works without RBAC permissions).')
 param useStorageManagedIdentity bool = true
 
+@minLength(1)
+@description('SharePoint site URL to monitor, e.g. https://contoso.sharepoint.com/sites/MySite.')
+param sharepointSiteUrl string
+
+@minLength(1)
+@description('Document library name or GUID accepted by the connector.')
+param sharepointLibraryName string = 'Documents'
+
+@description('List name or GUID. Empty uses the document library for item and form triggers.')
+param sharepointListName string = ''
+
+@description('Optional folder path for file and digest triggers. Empty monitors the whole library.')
+param sharepointFolderPath string = ''
+
+@description('Enable deletion triggers only when the connection user is a site collection administrator.')
+param sharepointEnableDeletionTriggers bool = false
+
+@description('Enable classification only after applying a licensed Microsoft Syntex model to the library.')
+param sharepointEnableSyntexTrigger bool = false
+
+@description('Existing form identifier. Empty disables the form-submitted trigger.')
+param sharepointFormId string = ''
+
+@description('Digest schedule: * for daily, or 0 through 6 for a day of the week. Empty disables the digest.')
+@allowed(['', '*', '0', '1', '2', '3', '4', '5', '6'])
+param sharepointDigestSchedule string = ''
+
+var optionalFunctions = {
+  OnSharepointDeletedItems: sharepointEnableDeletionTriggers
+  OnSharepointDeletedFileItems: sharepointEnableDeletionTriggers
+  OnSharepointUpdatedFileClassifiedTimes: sharepointEnableSyntexTrigger
+  OnSharepointNewItemsFromForm: !empty(sharepointFormId)
+  OnSharepointRecurrenceDigest: !empty(sharepointDigestSchedule)
+}
+
 var tags = {
   'azd-env-name': environmentName
 }
@@ -55,6 +90,7 @@ module resources 'resources.bicep' = {
     userPrincipalId: userPrincipalId
     assignStorageRoles: assignStorageRoles
     useStorageManagedIdentity: useStorageManagedIdentity
+    functionSettings: toObject(items(optionalFunctions), item => 'AzureWebJobs.${item.key}.Disabled', item => string(!item.value))
   }
 }
 
@@ -67,3 +103,11 @@ output functionAppName string = resources.outputs.functionAppName
 output connectorNamespaceName string = resources.outputs.connectorNamespaceName
 output sharepointConnectionName string = resources.outputs.sharepointConnectionName
 output sharepointConnectionRuntimeUrl string = resources.outputs.sharepointConnectionRuntimeUrl
+output sharepointSiteUrl string = sharepointSiteUrl
+output sharepointLibraryName string = sharepointLibraryName
+output sharepointListName string = empty(sharepointListName) ? sharepointLibraryName : sharepointListName
+output sharepointFolderPath string = sharepointFolderPath
+output sharepointEnableDeletionTriggers bool = sharepointEnableDeletionTriggers
+output sharepointEnableSyntexTrigger bool = sharepointEnableSyntexTrigger
+output sharepointFormId string = sharepointFormId
+output sharepointDigestSchedule string = sharepointDigestSchedule

@@ -4,7 +4,7 @@
 import { InvocationContext } from '@azure/functions';
 import { connectors, EmailTriggerContext } from '@azure/functions-extensions-connectors';
 
-connectors.office365.onNewMentionMeEmail('OnNewMentionMeEmail', {
+connectors.office365.onNewEmailMentioningMe('OnNewMentionMeEmail', {
     handler: async (context: EmailTriggerContext, invocationContext: InvocationContext) => {
         invocationContext.log('OnNewMentionMeEmail trigger received.');
 

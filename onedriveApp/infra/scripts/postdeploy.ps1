@@ -28,7 +28,7 @@ if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $onedriveC
 
 # --- Required OneDrive identifiers ------------------------------------------
 # OneDrive triggers are scoped to a folder within the user's OneDrive.
-# folderId can be a server-relative path (e.g. '/' for root, '/Documents/MyFolder').
+# Use the connector's folder Id, or 'root' for the drive root.
 $onedriveFolderId = $outputs.ONEDRIVE_FOLDER_ID
 
 function Select-FromList {
@@ -132,7 +132,7 @@ function New-OneDriveConnection {
         -g $resourceGroupName `
         --namespace $connectorNamespaceName `
         -n $ConnectionName `
-        --connector-name 'onedrive'
+        --connector-name 'onedriveforbusiness'
     if ($LASTEXITCODE -ne 0) {
         Write-Host "   Failed to create connection '$ConnectionName'." -ForegroundColor Red
         return $false
@@ -298,7 +298,7 @@ function Invoke-ConnectionRequest {
                 $env = $jsonText | ConvertFrom-Json
                 $sc = $env.response.statusCode
                 if ($sc -eq 'OK' -or $sc -eq 'Created' -or $sc -eq 'Accepted' -or $sc -eq 'NoContent') {
-                    return $env.response.body
+                    return ,$env.response.body
                 }
                 Write-Host "   connection invoke returned status: $sc" -ForegroundColor DarkGray
                 return $null
@@ -312,8 +312,7 @@ function Invoke-ConnectionRequest {
 
 function Select-OneDriveFolderInteractive {
     param([string] $CurrentSavedId)
-    # Stack of [pscustomobject]@{ id = ...; path = ... }. id 'root' is the
-    # special OneDrive connector token for the drive root.
+    # 'root' is only a navigation placeholder, not a trigger folder ID.
     $stack = New-Object System.Collections.Generic.Stack[object]
     $stack.Push([pscustomobject]@{ id = 'root'; path = '/' })
 
@@ -325,18 +324,29 @@ function Select-OneDriveFolderInteractive {
         $listingPath = if ($current.id -eq 'root') {
             '/datasets/default/folders'
         } else {
-            "/datasets/default/folders/$([System.Web.HttpUtility]::UrlEncode($current.id))"
+            $encodedId = [System.Uri]::EscapeDataString([System.Uri]::EscapeDataString($current.id))
+            "/datasets/default/foldersV2/$encodedId"
         }
         $items = Invoke-ConnectionRequest -Path $listingPath
         $subfolders = @()
         if ($items) {
+            if ($items -isnot [array]) {
+                if ($items.value -isnot [array]) {
+                    Write-Host "ERROR: Unexpected OneDrive folder listing. Expected an array or an object with a value array." -ForegroundColor Red
+                    return $null
+                }
+                $items = $items.value
+            }
             $subfolders = @($items | Where-Object { $_.IsFolder })
         }
 
         $choices = @()
-        $pickId = if ($current.id -eq 'root') { 'root' } else { $current.id }
-        $choices += [pscustomobject]@{ display = "[OK] Use this folder ($($current.path))"; action = 'pick'; targetId = $pickId; target = $null }
-        if ($CurrentSavedId -and $stack.Count -eq 1) {
+        if ($current.id -ne 'root') {
+            $choices += [pscustomobject]@{ display = "[OK] Use this folder ($($current.path))"; action = 'pick'; targetId = $current.id; target = $null }
+        } else {
+            Write-Host "Select a folder below; 'root' is only a navigation placeholder, not a trigger folder ID." -ForegroundColor Yellow
+        }
+        if ($CurrentSavedId -and $CurrentSavedId -ne 'root' -and $stack.Count -eq 1) {
             $choices += [pscustomobject]@{ display = "(keep current saved: $CurrentSavedId)"; action = 'keep'; targetId = $CurrentSavedId; target = $null }
         }
         if ($stack.Count -gt 1) {
@@ -364,6 +374,11 @@ function Select-OneDriveFolderInteractive {
             'down'   { $stack.Push($picked.target) }
             'manual' {
                 $manual = Read-Host 'OneDrive folder id'
+                if ($manual) { $manual = $manual.Trim() }
+                if ($manual -eq 'root') {
+                    Write-Host "Enter a folder Id returned by the connector, not 'root'." -ForegroundColor Yellow
+                    break
+                }
                 if (-not [string]::IsNullOrWhiteSpace($manual)) { return $manual.Trim() }
             }
             'cancel' { return $null }
@@ -371,7 +386,6 @@ function Select-OneDriveFolderInteractive {
     }
 }
 
-Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 $selected = Select-OneDriveFolderInteractive -CurrentSavedId $onedriveFolderId
 if (-not $selected) {
     Write-Host "Skipping trigger creation." -ForegroundColor Yellow
@@ -383,11 +397,13 @@ $onedriveFolderId = $selected
 azd env set ONEDRIVE_FOLDER_ID $onedriveFolderId | Out-Null
 Write-Host "Saved ONEDRIVE_FOLDER_ID=$onedriveFolderId" -ForegroundColor Green
 
-# Trigger configs (operationName values from the OneDrive connector swagger:
-# https://learn.microsoft.com/en-us/connectors/onedrive/).
+# Content and metadata trigger operations from the OneDrive for Business connector:
+# https://learn.microsoft.com/en-us/connectors/onedriveforbusiness/.
 $triggers = @(
-    @{ functionName = 'OnOneDriveNewFile';     operationName = 'OnNewFileV2';     parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) },
-    @{ functionName = 'OnOneDriveUpdatedFile'; operationName = 'OnUpdatedFileV2'; parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) }
+    @{ functionName = 'OnOneDriveNewFileContent'; operationName = 'OnNewFileV2'; parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) },
+    @{ functionName = 'OnOneDriveUpdatedFileContent'; operationName = 'OnUpdatedFileV2'; parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) },
+    @{ functionName = 'OnOneDriveNewFile';     operationName = 'OnNewFilesV2';     parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) },
+    @{ functionName = 'OnOneDriveUpdatedFile'; operationName = 'OnUpdatedFilesV2'; parameters = @(@{ name = 'folderId'; value = $onedriveFolderId }) }
 )
 
 # --- Create Connector Namespace trigger configs -----------------------------
@@ -399,7 +415,7 @@ if (-not $connectorExtensionKey) {
     exit 1
 }
 
-$connectionDetails = (@{ connectorName = 'onedrive'; connectionName = $onedriveConnectionName } | ConvertTo-Json -Compress)
+$connectionDetails = (@{ connectorName = 'onedriveforbusiness'; connectionName = $onedriveConnectionName } | ConvertTo-Json -Compress)
 $script:triggerFailures = @()
 
 function New-JsonArgFile {

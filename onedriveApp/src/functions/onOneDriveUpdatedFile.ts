@@ -4,7 +4,7 @@
 import { InvocationContext } from '@azure/functions';
 import { connectors, OneDriveFileTriggerContext } from '@azure/functions-extensions-connectors';
 
-connectors.onedrive.onUpdatedFile('OnOneDriveUpdatedFile', {
+connectors.onedriveforbusiness.onUpdatedFiles('OnOneDriveUpdatedFile', {
     handler: async (context: OneDriveFileTriggerContext, invocationContext: InvocationContext) => {
         invocationContext.log('OnOneDriveUpdatedFile trigger received.');
 

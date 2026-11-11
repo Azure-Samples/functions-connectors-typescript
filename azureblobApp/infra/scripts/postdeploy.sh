@@ -3,10 +3,9 @@
 #
 # Uses the official `connector-namespace` Azure CLI extension from
 # https://github.com/Azure/Connectors. Two responsibilities:
-#   1. Configure the Azure Blob connection with the user's storage account
-#      name (or blob endpoint) and access key.
+#   1. Configure the Azure Blob connection with the namespace's managed identity.
 #   2. Create one Connector Namespace trigger config per Functions trigger
-#      with the selected container as the trigger's `folderId`.
+#      targeting the provisioned test storage account and container.
 
 set -e
 
@@ -26,24 +25,25 @@ fi
 # --- Read azd outputs --------------------------------------------------------
 outputs=$(azd env get-values --output json)
 
-resourceGroupName=$(echo "$outputs"        | jq -r '.resourceGroupName')
-connectorNamespaceName=$(echo "$outputs"   | jq -r '.connectorNamespaceName')
-azureblobConnectionName=$(echo "$outputs"  | jq -r '.azureblobConnectionName')
-functionAppName=$(echo "$outputs"          | jq -r '.functionAppName')
-azureLocation=$(echo "$outputs"            | jq -r '.AZURE_LOCATION')
+resourceGroupName=$(echo "$outputs"        | jq -r '.resourceGroupName // empty')
+connectorNamespaceName=$(echo "$outputs"   | jq -r '.connectorNamespaceName // empty')
+azureblobConnectionName=$(echo "$outputs"  | jq -r '.azureblobConnectionName // empty')
+functionAppName=$(echo "$outputs"          | jq -r '.functionAppName // empty')
+namespaceLocation=$(echo "$outputs"        | jq -r '.CONNECTOR_NAMESPACE_LOCATION // empty')
+namespacePrincipalId=$(echo "$outputs"     | jq -r '.connectorNamespacePrincipalId // empty')
+accountInput=$(echo "$outputs"            | jq -r '.monitoredStorageAccountName // empty')
+containerInput=$(echo "$outputs"          | jq -r '.monitoredContainerName // empty')
 functionAppPrincipalId=$(echo "$outputs"   | jq -r '.functionAppPrincipalId // empty')
 userPrincipalId=$(echo "$outputs"          | jq -r '.AZURE_PRINCIPAL_ID // empty')
 tenantId=$(az account show --query tenantId -o tsv)
 
-if [[ -z "$resourceGroupName" || -z "$connectorNamespaceName" || -z "$azureblobConnectionName" || -z "$functionAppName" ]]; then
+if [[ -z "$resourceGroupName" || -z "$connectorNamespaceName" || -z "$azureblobConnectionName" || -z "$functionAppName" ||
+      -z "$namespaceLocation" || -z "$namespacePrincipalId" || -z "$accountInput" || -z "$containerInput" ]]; then
     echo -e "${RED}ERROR: required azd outputs missing. Run 'azd provision' first.${NC}"
     exit 1
 fi
 
 subscriptionId=$(az account show --query id -o tsv)
-
-savedAccount=$(echo "$outputs"   | jq -r '.BLOB_ACCOUNT // empty')
-savedContainer=$(echo "$outputs" | jq -r '.BLOB_CONTAINER // empty')
 
 # --- Verify the connector-namespace az CLI extension is installed ----------
 extInstalled="$(az extension show --name connector-namespace --query name -o tsv 2>/dev/null || true)"
@@ -52,100 +52,26 @@ if [[ -z "$extInstalled" ]]; then
     echo -e "${RED}       Download the latest 'connector_namespace-*.whl' from${NC}" >&2
     echo -e "${RED}       https://github.com/Azure/Connectors/releases and run:${NC}" >&2
     echo -e "${RED}         az extension add --source <wheel-url-or-path>${NC}" >&2
-    echo -e "${RED}       Then re-run: azd hooks run postdeploy${NC}" >&2
+    echo -e "${RED}       Then re-run: azd hooks run postup${NC}" >&2
     exit 2
 fi
 
-# --- Prompt for connection inputs ------------------------------------------
-echo ""
-echo -e "${CYAN}============================================================${NC}"
-echo -e "${CYAN} Azure Blob connection setup${NC}"
-echo -e "${CYAN}============================================================${NC}"
-echo -e "  Reference: https://learn.microsoft.com/en-us/connectors/azureblob/"
-echo ""
-
-validate_account_input() {
-    # echo back the value if accepted (or after y/N override), empty if rejected.
-    local v="$1"
-    v="${v%/}"  # strip trailing slash
-    if [[ "$v" =~ ^https?://([a-z0-9]{3,24})\.blob\.core\.windows\.net$ ]]; then
-        v="${BASH_REMATCH[1]}"
-        echo -e "${NC}   (using storage account name '$v' extracted from URL)${NC}" >&2
-    elif [[ "$v" =~ ^https?:// ]]; then
-        echo -e "${YELLOW}WARNING: blob endpoint URL does not match 'https://<account>.blob.core.windows.net' — typo? Got: $v${NC}" >&2
-        local ok=""
-        read -r -p "Use it anyway? [y/N]: " ok
-        [[ "$ok" =~ ^[Yy] ]] || { printf ''; return; }
-    elif ! [[ "$v" =~ ^[a-z0-9]{3,24}$ ]]; then
-        echo -e "${YELLOW}WARNING: '$v' does not look like a valid storage account name (3-24 lowercase alphanumeric).${NC}" >&2
-        local ok=""
-        read -r -p "Use it anyway? [y/N]: " ok
-        [[ "$ok" =~ ^[Yy] ]] || { printf ''; return; }
-    fi
-    printf '%s' "$v"
-}
-
-read_account_input() {
-    local saved="$1"
-    while true; do
-        local val
-        if [[ -n "$saved" ]]; then
-            read -r -p "Storage account name OR blob endpoint URL [$saved]: " val
-            val="${val:-$saved}"
-        else
-            read -r -p "Storage account name OR blob endpoint URL (e.g. 'mystorage' or 'https://mystorage.blob.core.windows.net/'): " val
-        fi
-        [[ -z "$val" ]] && { echo -e "${YELLOW}Required.${NC}" >&2; continue; }
-        local v
-        v=$(validate_account_input "$val")
-        if [[ -n "$v" ]]; then printf '%s' "$v"; return; fi
-    done
-}
-
-read_access_key() {
-    while true; do
-        local key=""
-        read -r -s -p "Storage account access key: " key
-        echo "" >&2
-        if [[ -n "$key" ]]; then printf '%s' "$key"; return; fi
-        echo -e "${YELLOW}Required.${NC}" >&2
-    done
-}
-
-read_container_name() {
-    local saved="$1"
-    while true; do
-        local val
-        if [[ -n "$saved" ]]; then
-            read -r -p "Container name to watch [$saved]: " val
-            val="${val:-$saved}"
-        else
-            read -r -p "Container name to watch (e.g. 'samples'): " val
-        fi
-        if [[ -n "$val" ]]; then printf '%s' "$val"; return; fi
-        echo -e "${YELLOW}Required.${NC}" >&2
-    done
-}
-
-set_connection_keybased_auth() {
-    local acct="$1" key="$2"
+set_connection_managed_identity_auth() {
     local url="https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Web/connectorGateways/${connectorNamespaceName}/connections/${azureblobConnectionName}?api-version=2026-05-01-preview"
     local bodyFile
-    bodyFile=$(mktemp --suffix=.json)
+    bodyFile=$(mktemp) || return 1
     jq -nc \
-        --arg loc "$azureLocation" \
-        --arg acct "$acct" \
-        --arg key "$key" \
+        --arg loc "$namespaceLocation" \
         '{
             location: $loc,
             properties: {
                 connectorName: "azureblob",
                 parameterValueSet: {
-                    name: "keyBasedAuth",
-                    values: {
-                        accountName: { value: $acct },
-                        accessKey:   { value: $key }
-                    }
+                    name: "managedIdentityAuth",
+                    values: {}
+                },
+                connectionProperties: {
+                    authentication: { type: "ManagedServiceIdentity" }
                 }
             }
         }' > "$bodyFile"
@@ -169,6 +95,7 @@ wait_connection_status() {
         fi
         sLower=$(echo "$s" | tr '[:upper:]' '[:lower:]')
         if [[ "$sLower" == "connected" ]]; then printf 'Connected'; return; fi
+        if [[ "$sLower" == "ready" ]]; then printf 'Ready'; return; fi
         if [[ "$sLower" == "error" ]]; then printf 'Error'; return; fi
         sleep 3
     done
@@ -197,65 +124,40 @@ show_connection_error() {
         printed=1
     fi
     if [[ $printed -eq 0 ]]; then
-        echo -e "${YELLOW}   (connector did not return a structured error — full properties below)${NC}" >&2
-        echo "$raw" | jq '.properties' | sed 's/^/     /' >&2
+        echo -e "${YELLOW}   (connector did not return a structured error)${NC}" >&2
     fi
 }
 
-accountInput=""
-accessKey=""
-containerInput=""
-maxAttempts=3
-for attempt in $(seq 1 $maxAttempts); do
-    accountInput=$(read_account_input "$savedAccount")
-    accessKey=$(read_access_key)
-    if [[ $attempt -eq 1 ]]; then
-        containerInput=$(read_container_name "$savedContainer")
-    fi
+echo -e "${YELLOW}-> Configuring '${azureblobConnectionName}' with the namespace's system-assigned identity...${NC}"
+if ! set_connection_managed_identity_auth; then
+    echo -e "${RED}ERROR: failed to update Azure Blob connection (ARM PUT failed).${NC}"
+    exit 1
+fi
 
-    echo ""
-    echo -e "${YELLOW}-> Updating connection '${azureblobConnectionName}' with key-based auth (attempt ${attempt}/${maxAttempts})...${NC}"
-    if ! set_connection_keybased_auth "$accountInput" "$accessKey"; then
-        echo -e "${RED}ERROR: failed to update Azure Blob connection (ARM PUT failed).${NC}"
-        exit 1
-    fi
-
-    finalStatus=$(wait_connection_status 90)
-    if [[ "$finalStatus" == "Connected" ]]; then
-        echo -e "${GREEN}   Azure Blob connection is Connected.${NC}"
-        break
-    fi
-
-    echo -e "${RED}ERROR: connection status is '${finalStatus}' — credentials or endpoint rejected.${NC}"
+finalStatus=$(wait_connection_status 90)
+if [[ "$finalStatus" != "Connected" && "$finalStatus" != "Ready" ]]; then
+    echo -e "${RED}ERROR: managed identity connection status is '${finalStatus}'.${NC}"
     show_connection_error
-    if [[ $attempt -lt $maxAttempts ]]; then
-        echo ""
-        echo -e "${YELLOW}Re-enter the storage account / endpoint / access key and try again.${NC}"
-        savedAccount="$accountInput"
-    else
-        echo ""
-        echo -e "${RED}Giving up after ${maxAttempts} attempts. Verify the storage account name, blob endpoint, and access key, then re-run: azd hooks run postdeploy${NC}"
-        exit 1
-    fi
-done
-
-# Persist non-secret values for next run (only after Connected).
-azd env set BLOB_ACCOUNT   "$accountInput"   >/dev/null
-azd env set BLOB_CONTAINER "$containerInput" >/dev/null
+    echo -e "${YELLOW}Verify the namespace identity and retry: azd hooks run postup${NC}"
+    exit 1
+fi
 
 # --- Create connection access policies --------------------------------------
 set_connection_access_policy() {
     local policyName="$1" objectId="$2"
     local url="https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Web/connectorGateways/${connectorNamespaceName}/connections/${azureblobConnectionName}/accessPolicies/${policyName}?api-version=2026-05-01-preview"
     local bodyFile
-    bodyFile=$(mktemp --suffix=.json)
+    bodyFile=$(mktemp) || return 1
     jq -nc --arg oid "$objectId" --arg tid "$tenantId" '{
         properties: { principal: { type: "ActiveDirectory", identity: { objectId: $oid, tenantId: $tid } } }
     }' > "$bodyFile"
-    az rest --method put --url "$url" --body "@$bodyFile" -o none 2>/dev/null || true
+    local rc=0
+    az rest --method put --url "$url" --body "@$bodyFile" -o none || rc=$?
     rm -f "$bodyFile"
+    return $rc
 }
 
+set_connection_access_policy 'namespace-msi' "$namespacePrincipalId"
 if [[ -n "$functionAppPrincipalId" ]]; then
     echo -e "${CYAN}-> Granting function-app managed identity access to the connection...${NC}"
     set_connection_access_policy 'functionapp-msi' "$functionAppPrincipalId"
@@ -273,7 +175,8 @@ if [[ -n "$connRuntimeUrl" ]]; then
     echo -e "${CYAN}-> Setting AzureBlobConnection app setting on ${functionAppName}...${NC}"
     az functionapp config appsettings set -g "$resourceGroupName" -n "$functionAppName" --settings "AzureBlobConnection=$connRuntimeUrl" -o none
 else
-    echo -e "${YELLOW}WARNING: could not fetch connection runtime URL — AzureBlobConnection app setting not updated.${NC}"
+    echo -e "${RED}ERROR: could not fetch connection runtime URL.${NC}"
+    exit 1
 fi
 
 # --- Compute folderId for the trigger --------------------------------------
@@ -325,7 +228,8 @@ for entry in "${triggers[@]}"; do
         --parameters "$parameters" \
         --notification-details "$notificationDetails" \
         --state "Enabled" \
-        --description "Azure Blob ${operationName} -> ${functionName}"; then
+        --description "Azure Blob ${operationName} -> ${functionName}" \
+        -o none; then
         echo -e "${YELLOW}WARNING: Failed to create trigger '${triggerName}'.${NC}"
         triggerFailures+=("$triggerName")
     fi
@@ -335,9 +239,11 @@ echo ""
 if [[ ${#triggerFailures[@]} -eq 0 ]]; then
     echo -e "${GREEN}✅ Connector Namespace trigger configs created successfully.${NC}"
 else
-    echo -e "${YELLOW}⚠  Some trigger configs failed: ${triggerFailures[*]}${NC}"
+    echo -e "${RED}ERROR: Some trigger configs failed: ${triggerFailures[*]}${NC}"
+    exit 1
 fi
 
 echo ""
 echo -e "${GREEN}✅ Post-deployment configuration complete.${NC}"
+echo "Upload blobs to '$containerInput' in storage account '$accountInput' to test the trigger."
 echo ""

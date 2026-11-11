@@ -4,11 +4,12 @@ Azure Functions app demonstrating the generic `connectorTrigger<TItem>` API from
 
 | Function | Connector | Item type |
 | -------- | --------- | --------- |
-| `OnGenericAzureBlobUpdated` | Azure Blob Storage | `AzureBlobMetadata` |
+| `OnGenericAzureBlobUpdated` | Azure Blob Storage | SDK `BlobMetadata`, imported as `AzureBlobMetadata` |
 | `OnGenericOffice365NewEmail` | Office 365 Outlook | `GraphClientReceiveMessage` |
 | `OnGenericSharepointNewFile` | SharePoint Online | `BlobMetadata` |
 | `OnGenericTeamsChannelMessage` | Microsoft Teams | `ChatMessage` |
 | `OnGenericCustomConnectorEvent` | Custom connector | Inline `CustomConnectorItem` |
+| [OnGenericOffice365NewEmailPoll](src/functions/onGenericOffice365NewEmailPoll.ts) | Office 365 Outlook (opt-in Poll delivery) | `GraphClientReceiveMessage` |
 
 ## Choosing the API
 
@@ -18,6 +19,14 @@ Azure Functions app demonstrating the generic `connectorTrigger<TItem>` API from
 | Connector without a wrapper, or a custom item type | `connectorTrigger<TItem>(...)` |
 
 Each handler receives a `ConnectorTriggerContext<TItem>` with `items`, the normalized `payload`, the original `rawPayload`, and `toJSON()`. The generic API changes the TypeScript handler declaration, not the connector operation. A separate trigger configuration must route the desired operation to the exact registered function name.
+
+In `0.2.0-preview`, Azure Blob has no typed wrapper or metadata re-export. Its example imports the metadata model from `@azure/connectors/generated/AzureblobExtensions`. See the [complete typed sample catalog](../README.md#samples) for the nine supported namespaces.
+
+## Polling
+
+[onGenericOffice365NewEmailPoll.ts](src/functions/onGenericOffice365NewEmailPoll.ts) demonstrates the generic API with `deliveryMode: DeliveryMode.Poll` and up to four concurrent calls. Cardinality is omitted because Functions `4.17.1` defaults to `Cardinality.One`. Follow the [shared polling setup](../README.md#polling-samples), including `EnablePollingSamples=true`, the connection endpoint, and the Poll Trigger Config name. The example is disabled by default and is not provisioned by webhook setup instructions.
+
+One Poll event may contain several emails; the extension exposes them through `context.items` while preserving the original event in `context.rawPayload`.
 
 ## Prerequisites
 
@@ -39,7 +48,7 @@ The deployment builds the TypeScript app and provisions a Flex Consumption Funct
 
 ## Connector configuration
 
-Use the [operation mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md) to choose the operation and parameters. Route its trigger configuration to:
+Use the SDK's trigger-operation and parameter metadata and the [manual setup guide](../README.md#manual-connector-setup) to choose the operation and parameters. Route its trigger configuration to:
 
 ```text
 https://<functions-host>/runtime/webhooks/connector?functionName=<registered-function-name>

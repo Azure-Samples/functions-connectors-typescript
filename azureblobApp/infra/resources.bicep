@@ -34,6 +34,8 @@ param instanceMemoryMB int = 2048
 
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var storageAccountName = take('st${replace(resourceToken, '-', '')}', 24)
+var monitoredStorageAccountName = take('stmon${resourceToken}', 24)
+var monitoredContainerName = 'testcontainer'
 var planName = 'plan-${environmentName}-${resourceToken}'
 var functionAppName = 'func-${environmentName}-${resourceToken}'
 var appInsightsName = 'appi-${environmentName}-${resourceToken}'
@@ -65,6 +67,32 @@ resource blobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01
 resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobServices
   name: deploymentContainerName
+}
+
+resource monitoredStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: monitoredStorageAccountName
+  location: location
+  kind: 'StorageV2'
+  sku: {
+    name: 'Standard_LRS'
+  }
+  properties: {
+    minimumTlsVersion: 'TLS1_2'
+    allowBlobPublicAccess: false
+    allowSharedKeyAccess: false
+    supportsHttpsTrafficOnly: true
+  }
+  tags: tags
+}
+
+resource monitoredBlobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: monitoredStorage
+  name: 'default'
+}
+
+resource monitoredContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: monitoredBlobServices
+  name: monitoredContainerName
 }
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
@@ -130,7 +158,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       }
       runtime: {
         name: 'node'
-        version: '20'
+        version: '24'
       }
     }
     siteConfig: {
@@ -168,6 +196,27 @@ resource functionAppSettings 'Microsoft.Web/sites/config@2024-04-01' = {
 // (required for Flex Consumption deployment package and AzureWebJobsStorage identity-based auth).
 var storageBlobDataOwnerRoleId = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+var storageBlobDataReaderRoleId = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+
+resource namespaceMonitoredBlobReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: monitoredContainer
+  name: guid(monitoredContainer.id, connectorNamespaceName, storageBlobDataReaderRoleId)
+  properties: {
+    principalId: connectorNamespace.outputs.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataReaderRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource deployerMonitoredBlobContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(userPrincipalId)) {
+  scope: monitoredContainer
+  name: guid(monitoredContainer.id, userPrincipalId, storageBlobDataContributorRoleId)
+  properties: {
+    principalId: userPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    principalType: 'User'
+  }
+}
 
 resource storageBlobDataOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storage
@@ -206,3 +255,7 @@ output functionAppHostname string = functionApp.properties.defaultHostName
 output connectorNamespaceName string = connectorNamespace.outputs.name
 output azureblobConnectionName string = azureblobConnectionName
 output functionAppPrincipalId string = functionApp.identity.principalId
+output connectorNamespacePrincipalId string = connectorNamespace.outputs.principalId
+output connectorNamespaceLocation string = connectorNamespaceLocation
+output monitoredStorageAccountName string = monitoredStorage.name
+output monitoredContainerName string = monitoredContainer.name

@@ -2,14 +2,14 @@
 // Licensed under the MIT License.
 
 import { InvocationContext } from '@azure/functions';
-import { AzureBlobFileTriggerContext, connectors } from '@azure/functions-extensions-connectors';
+import { BlobMetadata as AzureBlobMetadata } from '@azure/connectors/generated/AzureblobExtensions';
+import { connectorTrigger } from '@azure/functions-extensions-connectors';
 
-connectors.azureblob.onUpdatedFile('OnAzureBlobUpdatedFile', {
-    handler: async (context: AzureBlobFileTriggerContext, invocationContext: InvocationContext) => {
+connectorTrigger<AzureBlobMetadata>('OnAzureBlobUpdatedFile', {
+    handler: async (context, invocationContext: InvocationContext) => {
         invocationContext.log('OnAzureBlobUpdatedFile trigger received.');
 
-        // NOTE(swapnilnagar): context.files is typed as BlobMetadata[] from the Azure Blob SDK.
-        for (const file of context.files) {
+        for (const file of context.items) {
             invocationContext.log(`Name: '${file.Name}'.`);
             invocationContext.log(`Path: '${file.Path}'.`);
             invocationContext.log(`Size: '${file.Size}'.`);

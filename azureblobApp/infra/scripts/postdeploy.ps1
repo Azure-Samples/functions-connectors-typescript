@@ -2,15 +2,12 @@
 #
 # Uses the official `connector-namespace` Azure CLI extension from
 # https://github.com/Azure/Connectors. Two responsibilities:
-#   1. Configure the Azure Blob connection with the user's storage account
-#      name (or blob endpoint) and access key, so the connector can
-#      authenticate to blob storage.
+#   1. Configure the Azure Blob connection with the namespace's managed identity.
 #   2. Create one Connector Namespace trigger config per Functions trigger,
 #      each POSTing to the function's connector webhook URL with the
-#      selected container as the trigger's `folderId`.
-#
-# Connection access policies for the function-app MI and the deployer
-# user are created by Bicep (infra/connectorNamespace.bicep).
+#      provisioned test container as the trigger's `folderId`.
+
+$ErrorActionPreference = 'Stop'
 
 Write-Host "Post-deployment configuration..." -ForegroundColor Yellow
 
@@ -21,20 +18,20 @@ $resourceGroupName        = $outputs.resourceGroupName
 $connectorNamespaceName   = $outputs.connectorNamespaceName
 $azureblobConnectionName  = $outputs.azureblobConnectionName
 $functionAppName          = $outputs.functionAppName
+$namespaceLocation        = $outputs.CONNECTOR_NAMESPACE_LOCATION
+$namespacePrincipalId     = $outputs.connectorNamespacePrincipalId
+$accountInput             = $outputs.monitoredStorageAccountName
+$containerInput           = $outputs.monitoredContainerName
 $functionAppPrincipalId   = $outputs.functionAppPrincipalId
 $userPrincipalId          = $outputs.AZURE_PRINCIPAL_ID
 $tenantId                 = az account show --query tenantId -o tsv
 
-if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $azureblobConnectionName -or -not $functionAppName) {
+if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $azureblobConnectionName -or -not $functionAppName -or -not $namespaceLocation -or -not $namespacePrincipalId -or -not $accountInput -or -not $containerInput) {
     Write-Host "ERROR: required azd outputs missing. Run 'azd provision' first." -ForegroundColor Red
     exit 1
 }
 
 $subscriptionId = az account show --query id -o tsv
-
-# Persisted across runs (non-secret).
-$savedAccount   = $outputs.BLOB_ACCOUNT
-$savedContainer = $outputs.BLOB_CONTAINER
 
 # --- Verify the connector-namespace az CLI extension is installed ----------
 $extInstalled = az extension show --name connector-namespace --query name -o tsv 2>$null
@@ -43,96 +40,22 @@ if (-not $extInstalled) {
     Write-Host "       Download the latest 'connector_namespace-*.whl' from" -ForegroundColor Red
     Write-Host "       https://github.com/Azure/Connectors/releases and run:" -ForegroundColor Red
     Write-Host "         az extension add --source <wheel-url-or-path>" -ForegroundColor Red
-    Write-Host "       Then re-run: azd hooks run postdeploy" -ForegroundColor Red
+    Write-Host "       Then re-run: azd hooks run postup" -ForegroundColor Red
     exit 2
 }
 
-# --- Prompt for connection inputs ------------------------------------------
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host " Azure Blob connection setup" -ForegroundColor Cyan
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Reference: https://learn.microsoft.com/en-us/connectors/azureblob/" -ForegroundColor DarkGray
-Write-Host ""
-
-function Test-AccountInput {
-    param([string] $Value)
-    $v = $Value.Trim().TrimEnd('/')
-    # If user gave a full URL, extract the bare account name (the connector's
-    # 'accountName' parameter expects the storage account name, not a URL).
-    if ($v -match '^https?://([a-z0-9]{3,24})\.blob\.core\.windows\.net$') {
-        $v = $Matches[1]
-        Write-Host "   (using storage account name '$v' extracted from URL)" -ForegroundColor DarkGray
-    } elseif ($v -match '^https?://') {
-        Write-Host "WARNING: blob endpoint URL does not match 'https://<account>.blob.core.windows.net' — typo? Got: $v" -ForegroundColor Yellow
-        $confirm = Read-Host "Use it anyway? [y/N]"
-        if ($confirm -notmatch '^[Yy]') { return $null }
-    } elseif ($v -notmatch '^[a-z0-9]{3,24}$') {
-        Write-Host "WARNING: '$v' does not look like a valid storage account name (3-24 lowercase alphanumeric)." -ForegroundColor Yellow
-        $confirm = Read-Host "Use it anyway? [y/N]"
-        if ($confirm -notmatch '^[Yy]') { return $null }
-    }
-    return $v
-}
-
-function Read-AccountInput {
-    param([string] $Saved)
-    while ($true) {
-        $prompt = if ($Saved) {
-            "Storage account name OR blob endpoint URL [$Saved]"
-        } else {
-            "Storage account name OR blob endpoint URL (e.g. 'mystorage' or 'https://mystorage.blob.core.windows.net/')"
-        }
-        $val = Read-Host $prompt
-        if ([string]::IsNullOrWhiteSpace($val)) {
-            if ($Saved) { return $Saved }
-            Write-Host "Required." -ForegroundColor Yellow
-            continue
-        }
-        $valid = Test-AccountInput -Value $val
-        if ($valid) { return $valid }
-    }
-}
-
-function Read-AccessKey {
-    while ($true) {
-        $secure = Read-Host "Storage account access key" -AsSecureString
-        $plain  = [System.Net.NetworkCredential]::new('', $secure).Password
-        if (-not [string]::IsNullOrWhiteSpace($plain)) { return $plain }
-        Write-Host "Required." -ForegroundColor Yellow
-    }
-}
-
-function Read-ContainerName {
-    param([string] $Saved)
-    while ($true) {
-        $prompt = if ($Saved) { "Container name to watch [$Saved]" } else { "Container name to watch (e.g. 'samples')" }
-        $val = Read-Host $prompt
-        if ([string]::IsNullOrWhiteSpace($val)) {
-            if ($Saved) { return $Saved }
-            Write-Host "Required." -ForegroundColor Yellow
-            continue
-        }
-        return $val.Trim()
-    }
-}
-
-function Set-ConnectionKeyBasedAuth {
-    param(
-        [Parameter(Mandatory)] [string] $AccountInput,
-        [Parameter(Mandatory)] [string] $AccessKey
-    )
+function Set-ConnectionManagedIdentityAuth {
     $url = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Web/connectorGateways/$connectorNamespaceName/connections/${azureblobConnectionName}?api-version=2026-05-01-preview"
     $body = @{
-        location   = $outputs.AZURE_LOCATION
+        location   = $namespaceLocation
         properties = @{
             connectorName     = 'azureblob'
             parameterValueSet = @{
-                name   = 'keyBasedAuth'
-                values = @{
-                    accountName = @{ value = $AccountInput }
-                    accessKey   = @{ value = $AccessKey }
-                }
+                name   = 'managedIdentityAuth'
+                values = @{}
+            }
+            connectionProperties = @{
+                authentication = @{ type = 'ManagedServiceIdentity' }
             }
         }
     } | ConvertTo-Json -Depth 10 -Compress
@@ -147,7 +70,7 @@ function Set-ConnectionKeyBasedAuth {
     }
 }
 
-function Wait-ConnectionConnected {
+function Wait-ConnectionReady {
     param([int] $TimeoutSeconds = 90)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastStatus = ""
@@ -161,6 +84,7 @@ function Wait-ConnectionConnected {
         }
         $sLower = if ($s) { $s.ToLower() } else { "" }
         if ($sLower -eq "connected") { return "Connected" }
+        if ($sLower -eq "ready") { return "Ready" }
         if ($sLower -eq "error") { return "Error" }
         Start-Sleep -Seconds 3
     }
@@ -200,53 +124,23 @@ function Show-ConnectionError {
         }
     }
     if (-not $printed) {
-        Write-Host "   (connector did not return a structured error — full properties below)" -ForegroundColor DarkYellow
-        ($conn.properties | ConvertTo-Json -Depth 10) -split "`n" | ForEach-Object {
-            Write-Host "     $_" -ForegroundColor DarkGray
-        }
+        Write-Host "   (connector did not return a structured error)" -ForegroundColor DarkYellow
     }
 }
 
-$accountInput   = $null
-$accessKeyPlain = $null
-$containerInput = $null
-$maxAttempts    = 3
-for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-    $accountInput   = Read-AccountInput -Saved $savedAccount
-    $accessKeyPlain = Read-AccessKey
-    if ($attempt -eq 1) {
-        $containerInput = Read-ContainerName -Saved $savedContainer
-    }
+Write-Host "-> Configuring '$azureblobConnectionName' with the namespace's system-assigned identity..." -ForegroundColor Yellow
+if (-not (Set-ConnectionManagedIdentityAuth)) {
+    Write-Host "ERROR: failed to update Azure Blob connection (ARM PUT failed)." -ForegroundColor Red
+    exit 1
+}
 
-    Write-Host ""
-    Write-Host "-> Updating connection '$azureblobConnectionName' with key-based auth (attempt $attempt/$maxAttempts)..." -ForegroundColor Yellow
-    if (-not (Set-ConnectionKeyBasedAuth -AccountInput $accountInput -AccessKey $accessKeyPlain)) {
-        Write-Host "ERROR: failed to update Azure Blob connection (ARM PUT failed)." -ForegroundColor Red
-        exit 1
-    }
-
-    $finalStatus = Wait-ConnectionConnected -TimeoutSeconds 90
-    if ($finalStatus -eq "Connected") {
-        Write-Host "   Azure Blob connection is Connected." -ForegroundColor Green
-        break
-    }
-
-    Write-Host "ERROR: connection status is '$finalStatus' — credentials or endpoint rejected." -ForegroundColor Red
+$finalStatus = Wait-ConnectionReady -TimeoutSeconds 90
+if ($finalStatus -notin @('Connected', 'Ready')) {
+    Write-Host "ERROR: managed identity connection status is '$finalStatus'." -ForegroundColor Red
     Show-ConnectionError
-    if ($attempt -lt $maxAttempts) {
-        Write-Host ""
-        Write-Host "Re-enter the storage account / endpoint / access key and try again." -ForegroundColor Yellow
-        $savedAccount = $accountInput
-    } else {
-        Write-Host ""
-        Write-Host "Giving up after $maxAttempts attempts. Verify the storage account name, blob endpoint, and access key, then re-run: azd hooks run postdeploy" -ForegroundColor Red
-        exit 1
-    }
+    Write-Host "Verify the namespace identity and retry: azd hooks run postup" -ForegroundColor Yellow
+    exit 1
 }
-
-# Persist non-secret values for next run (only after Connected).
-azd env set BLOB_ACCOUNT   $accountInput  | Out-Null
-azd env set BLOB_CONTAINER $containerInput | Out-Null
 
 # --- Create connection access policies --------------------------------------
 function Set-ConnectionAccessPolicy {
@@ -266,12 +160,14 @@ function Set-ConnectionAccessPolicy {
     $bodyFile = Join-Path ([System.IO.Path]::GetTempPath()) ("ap-" + [guid]::NewGuid().ToString() + ".json")
     Set-Content -Path $bodyFile -Value $body -Encoding utf8
     try {
-        az rest --method put --url $url --body "@$bodyFile" -o none 2>$null
+        az rest --method put --url $url --body "@$bodyFile" -o none
+        if ($LASTEXITCODE -ne 0) { throw "Could not grant connection access to $PolicyName." }
     } finally {
         Remove-Item $bodyFile -ErrorAction SilentlyContinue
     }
 }
 
+Set-ConnectionAccessPolicy -PolicyName 'namespace-msi' -ObjectId $namespacePrincipalId | Out-Null
 if ($functionAppPrincipalId) {
     Write-Host "-> Granting function-app managed identity access to the connection..." -ForegroundColor Cyan
     Set-ConnectionAccessPolicy -PolicyName 'functionapp-msi' -ObjectId $functionAppPrincipalId | Out-Null
@@ -288,8 +184,9 @@ $connRuntimeUrl = az rest --method get `
 if ($connRuntimeUrl) {
     Write-Host "-> Setting AzureBlobConnection app setting on $functionAppName..." -ForegroundColor Cyan
     az functionapp config appsettings set -g $resourceGroupName -n $functionAppName --settings "AzureBlobConnection=$connRuntimeUrl" -o none
+    if ($LASTEXITCODE -ne 0) { throw 'Could not set AzureBlobConnection.' }
 } else {
-    Write-Host "WARNING: could not fetch connection runtime URL — AzureBlobConnection app setting not updated." -ForegroundColor Yellow
+    throw 'Could not fetch connection runtime URL.'
 }
 
 # --- Compute folderId for the trigger --------------------------------------
@@ -372,12 +269,14 @@ foreach ($t in $triggers) {
             --parameters "@$paramsFile" `
             --notification-details "@$notifFile" `
             --state 'Enabled' `
-            --description "Azure Blob $operationName -> $functionName"
+            --description "Azure Blob $operationName -> $functionName" `
+            -o none
+        $triggerExitCode = $LASTEXITCODE
     } finally {
         Remove-Item $connFile, $paramsFile, $notifFile -ErrorAction SilentlyContinue
     }
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($triggerExitCode -ne 0) {
         Write-Host "WARNING: Failed to create trigger '$triggerName'." -ForegroundColor Yellow
         $script:triggerFailures += $triggerName
     }
@@ -387,9 +286,11 @@ Write-Host ""
 if ($triggerFailures.Count -eq 0) {
     Write-Host "✅ Connector Namespace trigger configs created successfully." -ForegroundColor Green
 } else {
-    Write-Host "⚠  Some trigger configs failed: $($triggerFailures -join ', ')" -ForegroundColor Yellow
+    Write-Host "ERROR: Some trigger configs failed: $($triggerFailures -join ', ')" -ForegroundColor Red
+    exit 1
 }
 
 Write-Host ""
 Write-Host "✅ Post-deployment configuration complete." -ForegroundColor Green
+Write-Host "Upload blobs to '$containerInput' in storage account '$accountInput' to test the trigger."
 Write-Host ""

@@ -40,7 +40,7 @@ resource onedriveConnection 'Microsoft.Web/connectorGateways/connections@2026-05
   parent: connectorNamespace
   name: onedriveConnectionName
   properties: {
-    connectorName: 'onedrive'
+    connectorName: 'onedriveforbusiness'
   }
 }
 

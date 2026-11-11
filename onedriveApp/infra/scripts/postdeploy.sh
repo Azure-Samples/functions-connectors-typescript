@@ -134,7 +134,7 @@ create_onedrive_connection() {
         -g "${resourceGroupName}" \
         --namespace "${connectorNamespaceName}" \
         -n "${connectionName}" \
-        --connector-name 'onedrive'; then
+        --connector-name 'onedriveforbusiness'; then
         echo -e "${RED}   Failed to create connection '${connectionName}'.${NC}"
         return 1
     fi
@@ -270,7 +270,7 @@ urlencode() {
 connection_invoke() {
     local path="$1" method="${2:-get}"
     local reqFile
-    reqFile=$(mktemp --suffix=.json)
+    reqFile=$(mktemp) || return 1
     jq -nc --arg m "$method" --arg p "$path" '{method:$m, path:$p}' > "$reqFile"
     local raw
     raw=$(az connector-namespace connection invoke \
@@ -308,20 +308,29 @@ select_onedrive_folder() {
         if [[ "$curId" == "root" ]]; then
             listingPath='/datasets/default/folders'
         else
-            listingPath="/datasets/default/folders/$(urlencode "$curId")"
+            listingPath="/datasets/default/foldersV2/$(urlencode "$(urlencode "$curId")")"
         fi
         local body
         body=$(connection_invoke "$listingPath" 'get' || true)
 
-        local -a entries actions targetIds targetPaths
-        entries+=("[OK] Use this folder (${curPath})"); actions+=("pick"); targetIds+=("$curId"); targetPaths+=("")
-        if [[ -n "$savedId" && $top -eq 0 ]]; then
+        local -a entries=() actions=() targetIds=() targetPaths=()
+        if [[ "$curId" != "root" ]]; then
+            entries+=("[OK] Use this folder (${curPath})"); actions+=("pick"); targetIds+=("$curId"); targetPaths+=("")
+        else
+            echo "Select a folder below; 'root' is only a navigation placeholder, not a trigger folder ID." >&2
+        fi
+        if [[ -n "$savedId" && "$savedId" != "root" && $top -eq 0 ]]; then
             entries+=("(keep current saved: $savedId)"); actions+=("keep"); targetIds+=("$savedId"); targetPaths+=("")
         fi
         if [[ $top -gt 0 ]]; then
             entries+=(".. (go up)"); actions+=("up"); targetIds+=(""); targetPaths+=("")
         fi
         if [[ -n "$body" && "$body" != "null" ]]; then
+            local folderItems
+            if ! folderItems=$(echo "$body" | jq -c 'if type == "array" then . elif type == "object" and (.value | type) == "array" then .value else error("Unexpected OneDrive folder listing") end'); then
+                echo -e "${RED}ERROR: Expected a OneDrive folder array or an object with a value array.${NC}" >&2
+                return 1
+            fi
             while IFS=$'\t' read -r cName cId; do
                 [[ -z "$cId" ]] && continue
                 entries+=("-> ${cName}")
@@ -331,7 +340,7 @@ select_onedrive_folder() {
                 else
                     targetPaths+=("${curPath}/${cName}")
                 fi
-            done < <(echo "$body" | jq -r '.[] | select(.IsFolder == true) | [.Name, .Id] | @tsv' 2>/dev/null)
+            done < <(echo "$folderItems" | jq -r '.[] | select(.IsFolder == true) | [.Name, .Id] | @tsv')
         fi
         entries+=("(Enter folder id manually...)"); actions+=("manual"); targetIds+=(""); targetPaths+=("")
         entries+=("(Cancel — skip trigger creation)"); actions+=("cancel"); targetIds+=(""); targetPaths+=("")
@@ -348,6 +357,10 @@ select_onedrive_folder() {
             manual)
                 local manual
                 read -r -p 'OneDrive folder id: ' manual
+                if [[ "$manual" == "root" ]]; then
+                    echo "Enter a folder Id returned by the connector, not 'root'." >&2
+                    continue
+                fi
                 if [[ -n "$manual" ]]; then printf '%s' "$manual"; return 0; fi
                 ;;
             cancel) return 1 ;;
@@ -376,12 +389,14 @@ if [[ -z "$connectorExtensionKey" ]]; then
 fi
 
 connectionDetails=$(jq -nc --arg conn "${onedriveConnectionName}" \
-    '{connectorName:"onedrive", connectionName:$conn}')
+    '{connectorName:"onedriveforbusiness", connectionName:$conn}')
 
 # functionName | operationName | parameters JSON
 triggers=(
-    "OnOneDriveNewFile|OnNewFileV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
-    "OnOneDriveUpdatedFile|OnUpdatedFileV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
+    "OnOneDriveNewFileContent|OnNewFileV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
+    "OnOneDriveUpdatedFileContent|OnUpdatedFileV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
+    "OnOneDriveNewFile|OnNewFilesV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
+    "OnOneDriveUpdatedFile|OnUpdatedFilesV2|$(jq -nc --arg f "$onedriveFolderId" '[{name:"folderId",value:$f}]')"
 )
 
 triggerFailures=()

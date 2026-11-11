@@ -27,202 +27,12 @@ if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $sharepoin
 }
 
 # --- Required SharePoint identifiers ----------------------------------------
-# Both SharePoint triggers used in this app are scoped to a specific site and
-# folder. These cannot be inferred at provisioning time, so we either read
-# them from azd env vars or prompt the user.
-$sharepointSiteAddress = $outputs.SHAREPOINT_SITE_ADDRESS
-$sharepointFolderId    = $outputs.SHAREPOINT_FOLDER_ID
+$sharepointSiteAddress = $outputs.sharepointSiteUrl
 
-function Select-FromList {
-    param(
-        [Parameter(Mandatory)] [string] $Title,
-        [Parameter(Mandatory)] [object[]] $Items,
-        [Parameter(Mandatory)] [string] $LabelProperty,
-        [string] $SubLabelProperty
-    )
-    Write-Host ""
-    Write-Host $Title -ForegroundColor Cyan
-    for ($i = 0; $i -lt $Items.Count; $i++) {
-        $label = $Items[$i].$LabelProperty
-        if ($SubLabelProperty -and $Items[$i].$SubLabelProperty) {
-            Write-Host ("  [{0}] {1}  ({2})" -f ($i + 1), $label, $Items[$i].$SubLabelProperty)
-        } else {
-            Write-Host ("  [{0}] {1}" -f ($i + 1), $label)
-        }
-    }
-    while ($true) {
-        $answer = Read-Host "Enter number (1-$($Items.Count))"
-        if ($null -eq $answer) {
-            throw "No input available. Re-run with 'interactive: true' on the hook, or set SHAREPOINT_SITE_ADDRESS / SHAREPOINT_FOLDER_ID via 'azd env set'."
-        }
-        $num = 0
-        if ([int]::TryParse($answer, [ref]$num) -and $num -ge 1 -and $num -le $Items.Count) {
-            return $Items[$num - 1]
-        }
-        Write-Host "Invalid selection." -ForegroundColor Yellow
-    }
-}
-
-$script:LastGraphError = $null
-
-function Invoke-Graph {
-    param(
-        [Parameter(Mandatory)][string] $Url,
-        [string[]] $UriParameters,
-        [switch] $Quiet
-    )
-    $script:LastGraphError = $null
-    $errFile = [System.IO.Path]::GetTempFileName()
-    try {
-        # PowerShell -> az.cmd -> cmd.exe re-parses args; cmd treats '&' as a
-        # command separator, which mangles URLs with query strings. Pass query
-        # params via --uri-parameters so az builds them server-side.
-        $azArgs = @('rest', '--method', 'get', '--url', $Url, '--resource', 'https://graph.microsoft.com')
-        if ($UriParameters -and $UriParameters.Count -gt 0) {
-            $azArgs += '--uri-parameters'
-            $azArgs += $UriParameters
-        }
-        $raw = & az @azArgs 2>$errFile
-        if ($LASTEXITCODE -ne 0 -or -not $raw) {
-            $err = (Get-Content $errFile -Raw).Trim()
-            $script:LastGraphError = $err
-            if (-not $Quiet) {
-                if ($err) { Write-Host "   Graph call failed: $err" -ForegroundColor DarkGray }
-            }
-            return $null
-        }
-        return ($raw | ConvertFrom-Json)
-    } finally {
-        Remove-Item $errFile -ErrorAction SilentlyContinue
-    }
-}
-
-function Test-IsGraphForbidden {
-    param([string] $ErrorText)
-    if (-not $ErrorText) { return $false }
-    return ($ErrorText -match '(?i)forbidden|accessDenied|InvalidAuthenticationToken|AuthenticationError|401|403')
-}
-
-function Invoke-AzLoginForGraph {
-    Write-Host ""
-    Write-Host "Re-authenticating Azure CLI with Microsoft Graph 'Sites.Read.All' scope..." -ForegroundColor Yellow
-    Write-Host "  Running: az login --scope https://graph.microsoft.com/Sites.Read.All" -ForegroundColor DarkGray
-    & az login --scope https://graph.microsoft.com/Sites.Read.All --only-show-errors | Out-Null
-    return ($LASTEXITCODE -eq 0)
-}
-
-function Read-ManualSharepointInputs {
-    Write-Host ""
-    Write-Host "Falling back to manual site entry. The library and folder pickers will still run via Microsoft Graph." -ForegroundColor Yellow
-    $site = Read-Host "SharePoint site URL (e.g. https://contoso.sharepoint.com/sites/MySite)"
-    if (-not $site) { return $null }
-    return @{ site = $site }
-}
-
-if (-not $sharepointSiteAddress -or -not $sharepointFolderId) {
-    Write-Host ""
-    Write-Host "Fetching SharePoint sites accessible to your account from Microsoft Graph..." -ForegroundColor Yellow
-
-    # /sites?search=* enumerates sites the signed-in user has access to.
-    $sitesResponse = Invoke-Graph -Url 'https://graph.microsoft.com/v1.0/sites' -UriParameters @('search=*', '$select=id,displayName,webUrl', '$top=100')
-
-    # NOTE: We deliberately do NOT attempt 'az login --scope https://graph.microsoft.com/Sites.Read.All'.
-    # Many tenants block that flow with AADSTS65002 (the Azure CLI first-party app is not
-    # pre-authorized for Microsoft Graph). Fall back to manual site URL entry instead and let
-    # the library/folder pickers run via Graph against that specific site.
-
-    if (-not $sitesResponse -or -not $sitesResponse.value -or $sitesResponse.value.Count -eq 0) {
-        Write-Host ""
-        Write-Host "NOTE: The Azure CLI access token cannot enumerate SharePoint sites via Microsoft Graph search." -ForegroundColor Yellow
-        Write-Host "      (This is expected when the tenant has not pre-authorized the Azure CLI for 'Sites.Read.All'.)" -ForegroundColor DarkGray
-        Write-Host "      You can paste the site URL directly; the library and folder pickers will still run." -ForegroundColor Yellow
-        Write-Host ""
-        $manual = Read-ManualSharepointInputs
-        if (-not $manual) {
-            Write-Host "ERROR: No site provided. Set the values manually and re-run:" -ForegroundColor Red
-            Write-Host "         azd env set SHAREPOINT_SITE_ADDRESS https://contoso.sharepoint.com/sites/MySite" -ForegroundColor Red
-            Write-Host "         azd env set SHAREPOINT_FOLDER_ID    '/Shared Documents'" -ForegroundColor Red
-            exit 1
-        }
-        $sharepointSiteAddress = $manual.site
-        azd env set SHAREPOINT_SITE_ADDRESS $sharepointSiteAddress | Out-Null
-        Write-Host "Saved SHAREPOINT_SITE_ADDRESS=$sharepointSiteAddress" -ForegroundColor Green
-        $sitesResponse = $null
-    }
-
-    # Filter out entries with empty displayName (e.g. tenant root) and sort.
-    $sites = @()
-    if ($sitesResponse) {
-        $sites = @($sitesResponse.value | Where-Object { $_.displayName } | Sort-Object displayName)
-        if ($sites.Count -eq 0) { $sites = @($sitesResponse.value) }
-    }
-
-    $selectedSite = $null
-    if (-not $sharepointSiteAddress) {
-        $selectedSite = Select-FromList -Title 'Select a SharePoint site:' -Items $sites -LabelProperty 'displayName' -SubLabelProperty 'webUrl'
-        $sharepointSiteAddress = $selectedSite.webUrl
-        azd env set SHAREPOINT_SITE_ADDRESS $sharepointSiteAddress | Out-Null
-        Write-Host "Saved SHAREPOINT_SITE_ADDRESS=$sharepointSiteAddress" -ForegroundColor Green
-    } else {
-        $selectedSite = $sites | Where-Object { $_.webUrl -eq $sharepointSiteAddress } | Select-Object -First 1
-    }
-
-    if (-not $sharepointFolderId) {
-        # Resolve the Graph site id, either from the search result or by URL.
-        $siteId = $null
-        if ($selectedSite -and $selectedSite.id) {
-            $siteId = $selectedSite.id
-        } else {
-            $uri = [Uri]$sharepointSiteAddress
-            $relPath = $uri.AbsolutePath.TrimEnd('/')
-            $resolveUrl = "https://graph.microsoft.com/v1.0/sites/$($uri.Host):$($relPath)"
-            $resolved = Invoke-Graph -Url $resolveUrl -UriParameters @('$select=id')
-            if ($resolved -and $resolved.id) { $siteId = $resolved.id }
-        }
-
-        if (-not $siteId) {
-            Write-Host "NOTE: Microsoft Graph could not resolve the site id (likely 'Sites.Read.All' is not consented for the Azure CLI)." -ForegroundColor Yellow
-            $manualFolder = Read-Host "Document library / folder path (press Enter for '/Shared Documents')"
-            if ([string]::IsNullOrWhiteSpace($manualFolder)) { $manualFolder = '/Shared Documents' }
-            $sharepointFolderId = $manualFolder
-        } else {
-            $drivesResponse = Invoke-Graph -Url "https://graph.microsoft.com/v1.0/sites/$siteId/drives" -UriParameters @('$select=id,name,webUrl')
-            if (-not $drivesResponse -or -not $drivesResponse.value -or $drivesResponse.value.Count -eq 0) {
-                Write-Host "NOTE: Microsoft Graph returned no document libraries for this site." -ForegroundColor Yellow
-                $manualFolder = Read-Host "Document library / folder path (press Enter for '/Shared Documents')"
-                if ([string]::IsNullOrWhiteSpace($manualFolder)) { $manualFolder = '/Shared Documents' }
-                $sharepointFolderId = $manualFolder
-            } else {
-                $drive = Select-FromList -Title 'Select a document library:' -Items $drivesResponse.value -LabelProperty 'name'
-                # The connector folderId accepts the human-readable
-                # server-relative path. The default 'Documents' library
-                # surfaces under '/Shared Documents' in the site URL.
-                $libraryRoot = if ($drive.name -eq 'Documents') { '/Shared Documents' } else { "/$($drive.name)" }
-
-                # Let the user pick the library root or drill into a subfolder.
-                $folderChoices = @(
-                    [pscustomobject]@{ name = "(library root: $libraryRoot)"; relativePath = '' }
-                )
-                $childrenResponse = Invoke-Graph -Url "https://graph.microsoft.com/v1.0/drives/$($drive.id)/root/children" -UriParameters @('$select=name,folder', '$top=200') -Quiet
-                if ($childrenResponse -and $childrenResponse.value) {
-                    foreach ($child in $childrenResponse.value) {
-                        if ($child.folder) {
-                            $folderChoices += [pscustomobject]@{ name = $child.name; relativePath = "/$($child.name)" }
-                        }
-                    }
-                }
-
-                if ($folderChoices.Count -eq 1) {
-                    $sharepointFolderId = $libraryRoot
-                } else {
-                    $picked = Select-FromList -Title 'Select a folder (or library root):' -Items $folderChoices -LabelProperty 'name'
-                    $sharepointFolderId = $libraryRoot + $picked.relativePath
-                }
-            }
-        }
-        azd env set SHAREPOINT_FOLDER_ID $sharepointFolderId | Out-Null
-        Write-Host "Saved SHAREPOINT_FOLDER_ID=$sharepointFolderId" -ForegroundColor Green
-    }
+if (-not $sharepointSiteAddress) {
+    Write-Host "ERROR: Missing provisioned SharePoint site URL." -ForegroundColor Red
+    Write-Host "Set SHAREPOINT_SITE_URL with 'azd env set', then run 'azd provision' before rerunning this hook." -ForegroundColor Red
+    exit 1
 }
 
 # --- Verify the connector-namespace az CLI extension is installed ----------
@@ -240,10 +50,48 @@ if (-not $extInstalled) {
 # One entry per Functions trigger in this app. operationName values come from
 # the SharePoint Online connector swagger:
 #   https://learn.microsoft.com/en-us/connectors/sharepointonline/
-$triggers = @(
-    @{ functionName = 'OnSharepointNewFile';     operationName = 'OnNewFile';     parameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'folderId'; value = $sharepointFolderId }) },
-    @{ functionName = 'OnSharepointUpdatedFile'; operationName = 'OnUpdatedFile'; parameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'folderId'; value = $sharepointFolderId }) }
+$triggers = @()
+
+$sharepointLibraryName = $outputs.sharepointLibraryName
+$sharepointListName = $outputs.sharepointListName
+$sharepointFolderPath = $outputs.sharepointFolderPath
+$sharepointEnableDeletionTriggers = "$($outputs.sharepointEnableDeletionTriggers)" -eq 'true'
+$sharepointEnableSyntexTrigger = "$($outputs.sharepointEnableSyntexTrigger)" -eq 'true'
+$sharepointFormId = $outputs.sharepointFormId
+$sharepointDigestSchedule = $outputs.sharepointDigestSchedule
+
+$listParameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'table'; value = $sharepointListName })
+$libraryParameters = @(@{ name = 'dataset'; value = $sharepointSiteAddress }, @{ name = 'table'; value = $sharepointLibraryName })
+if ($sharepointFolderPath) {
+    $libraryParameters += @{ name = 'folderPath'; value = $sharepointFolderPath }
+}
+
+$triggers += @(
+    @{ functionName = 'OnSharepointChangedItems'; operationName = 'GetOnChangedItems'; parameters = $listParameters },
+    @{ functionName = 'OnSharepointNewItems'; operationName = 'GetOnNewItems'; parameters = $listParameters },
+    @{ functionName = 'OnSharepointUpdatedItems'; operationName = 'GetOnUpdatedItems'; parameters = $listParameters },
+    @{ functionName = 'OnSharepointNewFileItems'; operationName = 'GetOnNewFileItems'; parameters = $libraryParameters },
+    @{ functionName = 'OnSharepointUpdatedFileItems'; operationName = 'GetOnUpdatedFileItems'; parameters = $libraryParameters }
 )
+
+if ($sharepointEnableDeletionTriggers) {
+    $triggers += @(
+        @{ functionName = 'OnSharepointDeletedItems'; operationName = 'GetOnDeletedItems'; parameters = $listParameters },
+        @{ functionName = 'OnSharepointDeletedFileItems'; operationName = 'GetOnDeletedFileItems'; parameters = $libraryParameters }
+    )
+}
+
+if ($sharepointEnableSyntexTrigger) {
+    $triggers += @{ functionName = 'OnSharepointUpdatedFileClassifiedTimes'; operationName = 'GetOnUpdatedFileClassifiedTimes'; parameters = $libraryParameters }
+}
+
+if ($sharepointFormId) {
+    $triggers += @{ functionName = 'OnSharepointNewItemsFromForm'; operationName = 'GetOnNewItemsFromForm'; parameters = $listParameters + @(@{ name = 'form'; value = $sharepointFormId }) }
+}
+
+if ($sharepointDigestSchedule) {
+    $triggers += @{ functionName = 'OnSharepointRecurrenceDigest'; operationName = 'GetOnRecurrenceDigest'; parameters = $libraryParameters + @(@{ name = 'add'; value = $true }, @{ name = 'update'; value = $true }, @{ name = 'runSchedule'; value = $sharepointDigestSchedule }) }
+}
 
 # --- Authorize the SharePoint connection (OAuth consent) --------------------
 function Test-ConnectionExists {
@@ -400,6 +248,19 @@ if (-not $connectorExtensionKey) {
 $connectionDetails = (@{ connectorName = 'sharepointonline'; connectionName = $sharepointConnectionName } | ConvertTo-Json -Compress)
 $script:triggerFailures = @()
 
+$existingTriggers = az connector-namespace trigger list -g $resourceGroupName --namespace $connectorNamespaceName --query '[].name' -o json
+if ($LASTEXITCODE -ne 0) { throw 'Could not list existing SharePoint trigger configurations.' }
+$existingNames = ($existingTriggers -join "`n") | ConvertFrom-Json
+$optionalFunctions = @('OnSharepointDeletedItems', 'OnSharepointDeletedFileItems', 'OnSharepointUpdatedFileClassifiedTimes', 'OnSharepointNewItemsFromForm', 'OnSharepointRecurrenceDigest')
+foreach ($functionName in $optionalFunctions) {
+    $triggerName = "$sharepointConnectionName-$($functionName.ToLower())"
+    if ($functionName -notin $triggers.functionName -and $triggerName -in $existingNames) {
+        Write-Host "Disabling opt-in trigger: $functionName"
+        az connector-namespace trigger update -g $resourceGroupName --namespace $connectorNamespaceName -n $triggerName --state Disabled -o none
+        if ($LASTEXITCODE -ne 0) { throw "Could not disable trigger $triggerName." }
+    }
+}
+
 function New-JsonArgFile {
     param([Parameter(Mandatory)] [string] $Json)
     $path = Join-Path ([System.IO.Path]::GetTempPath()) ("trigger-arg-" + [guid]::NewGuid().ToString() + ".json")
@@ -431,15 +292,13 @@ foreach ($t in $triggers) {
     Write-Host ""
     Write-Host "Creating trigger '$triggerName' for $functionName ($operationName)..." -ForegroundColor Yellow
 
-    az connector-namespace trigger delete `
-        -g $resourceGroupName --namespace $connectorNamespaceName `
-        -n $triggerName --yes 2>$null | Out-Null
+    $verb = if ($triggerName -in $existingNames) { 'update' } else { 'create' }
 
     $connFile   = New-JsonArgFile -Json $connectionDetails
     $paramsFile = New-JsonArgFile -Json $parameters
     $notifFile  = New-JsonArgFile -Json $notificationDetails
     try {
-        az connector-namespace trigger create `
+        az connector-namespace trigger $verb `
             -g $resourceGroupName `
             --namespace $connectorNamespaceName `
             -n $triggerName `
@@ -464,6 +323,7 @@ if ($triggerFailures.Count -eq 0) {
     Write-Host "✅ Connector Namespace trigger configs created successfully." -ForegroundColor Green
 } else {
     Write-Host "⚠  Some trigger configs failed: $($triggerFailures -join ', ')" -ForegroundColor Yellow
+    exit 1
 }
 
 Write-Host ""

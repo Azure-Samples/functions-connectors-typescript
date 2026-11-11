@@ -37,186 +37,12 @@ if [[ -z "$resourceGroupName" || -z "$connectorNamespaceName" || -z "$sharepoint
 fi
 
 # --- Required SharePoint identifiers ----------------------------------------
-sharepointSiteAddress=$(echo "$outputs" | jq -r '.SHAREPOINT_SITE_ADDRESS // empty')
-sharepointFolderId=$(echo "$outputs"    | jq -r '.SHAREPOINT_FOLDER_ID // empty')
+sharepointSiteAddress=$(echo "$outputs" | jq -r '.sharepointSiteUrl // empty')
 
-LAST_GRAPH_ERROR=""
-
-graph_get() {
-    local errFile
-    errFile=$(mktemp)
-    local out rc
-    # Quote the URL so '&' / '$' survive shell re-parsing.
-    out=$(az rest --method get --url "$1" --resource https://graph.microsoft.com 2>"$errFile")
-    rc=$?
-    if [[ $rc -ne 0 || -z "$out" ]]; then
-        if [[ -s "$errFile" ]]; then
-            LAST_GRAPH_ERROR="$(cat "$errFile")"
-            echo "   Graph call failed: $LAST_GRAPH_ERROR" >&2
-        else
-            LAST_GRAPH_ERROR=""
-        fi
-        rm -f "$errFile"
-        return 1
-    fi
-    LAST_GRAPH_ERROR=""
-    rm -f "$errFile"
-    echo "$out"
-}
-
-is_graph_forbidden() {
-    [[ "$1" =~ [Ff]orbidden|accessDenied|InvalidAuthenticationToken|AuthenticationError|\"401\"|\"403\" ]]
-}
-
-az_login_for_graph() {
-    echo "" >&2
-    echo -e "${YELLOW}Re-authenticating Azure CLI with Microsoft Graph 'Sites.Read.All' scope...${NC}" >&2
-    echo "  Running: az login --scope https://graph.microsoft.com/Sites.Read.All" >&2
-    az login --scope https://graph.microsoft.com/Sites.Read.All --only-show-errors >/dev/null
-    return $?
-}
-
-select_from_list() {
-    # Args: title, then alternating "label|sublabel" entries (sublabel optional).
-    local title="$1"; shift
-    local entries=("$@")
-    echo "" >&2
-    echo -e "${YELLOW}${title}${NC}" >&2
-    local i=1
-    for e in "${entries[@]}"; do
-        local lbl="${e%%|*}"
-        local sub=""
-        if [[ "$e" == *"|"* ]]; then sub="${e#*|}"; fi
-        if [[ -n "$sub" ]]; then
-            echo "  [$i] $lbl  ($sub)" >&2
-        else
-            echo "  [$i] $lbl" >&2
-        fi
-        i=$((i+1))
-    done
-    while true; do
-        read -r -p "Enter number (1-${#entries[@]}): " answer
-        if [[ "$answer" =~ ^[0-9]+$ ]] && (( answer >= 1 && answer <= ${#entries[@]} )); then
-            echo $((answer-1))
-            return
-        fi
-        echo -e "${YELLOW}Invalid selection.${NC}" >&2
-    done
-}
-
-if [[ -z "$sharepointSiteAddress" || -z "$sharepointFolderId" ]]; then
-    echo ""
-    echo -e "${YELLOW}Fetching SharePoint sites accessible to your account from Microsoft Graph...${NC}"
-
-    sitesJson=$(graph_get 'https://graph.microsoft.com/v1.0/sites?search=*&$select=id,displayName,webUrl&$top=100' || true)
-    sitesCount=$(echo "$sitesJson" | jq -r '[.value[] | select(.displayName != null and .displayName != "")] | length // 0' 2>/dev/null || echo 0)
-
-    # NOTE: We deliberately do NOT attempt 'az login --scope https://graph.microsoft.com/Sites.Read.All'.
-    # Many tenants block that flow with AADSTS65002 (the Azure CLI first-party app is not
-    # pre-authorized for Microsoft Graph). Fall back to manual site URL entry instead and let
-    # the library/folder pickers run via Graph against that specific site.
-
-    if [[ -z "$sitesJson" || "$sitesCount" == "0" ]]; then
-        echo ""
-        echo -e "${YELLOW}NOTE: The Azure CLI access token cannot enumerate SharePoint sites via Microsoft Graph search.${NC}" >&2
-        echo -e "      (This is expected when the tenant has not pre-authorized the Azure CLI for 'Sites.Read.All'.)" >&2
-        echo -e "${YELLOW}      You can paste the site URL directly; the library and folder pickers will still run.${NC}" >&2
-        echo ""
-        read -r -p "SharePoint site URL (e.g. https://contoso.sharepoint.com/sites/MySite): " sharepointSiteAddress
-        if [[ -z "$sharepointSiteAddress" ]]; then
-            echo -e "${RED}ERROR: No site provided. Set the values manually:${NC}" >&2
-            echo -e "${RED}         azd env set SHAREPOINT_SITE_ADDRESS https://contoso.sharepoint.com/sites/MySite${NC}" >&2
-            echo -e "${RED}         azd env set SHAREPOINT_FOLDER_ID    '/Shared Documents'${NC}" >&2
-            exit 1
-        fi
-        azd env set SHAREPOINT_SITE_ADDRESS "$sharepointSiteAddress" >/dev/null
-        echo -e "${GREEN}Saved SHAREPOINT_SITE_ADDRESS=$sharepointSiteAddress${NC}"
-        sitesJson=""
-    fi
-
-    if [[ -n "$sitesJson" ]]; then
-        mapfile -t siteIds   < <(echo "$sitesJson" | jq -r '[.value[] | select(.displayName != null and .displayName != "")] | sort_by(.displayName) | .[].id')
-        mapfile -t siteUrls  < <(echo "$sitesJson" | jq -r '[.value[] | select(.displayName != null and .displayName != "")] | sort_by(.displayName) | .[].webUrl')
-        mapfile -t siteNames < <(echo "$sitesJson" | jq -r '[.value[] | select(.displayName != null and .displayName != "")] | sort_by(.displayName) | .[].displayName')
-    else
-        siteIds=(); siteUrls=(); siteNames=()
-    fi
-
-    selectedSiteId=""
-    if [[ -z "$sharepointSiteAddress" ]]; then
-        siteEntries=()
-        for ((i=0; i<${#siteNames[@]}; i++)); do
-            siteEntries+=("${siteNames[$i]}|${siteUrls[$i]}")
-        done
-        idx=$(select_from_list 'Select a SharePoint site:' "${siteEntries[@]}")
-        sharepointSiteAddress="${siteUrls[$idx]}"
-        selectedSiteId="${siteIds[$idx]}"
-        azd env set SHAREPOINT_SITE_ADDRESS "$sharepointSiteAddress" >/dev/null
-        echo -e "${GREEN}Saved SHAREPOINT_SITE_ADDRESS=$sharepointSiteAddress${NC}"
-    else
-        for ((i=0; i<${#siteUrls[@]}; i++)); do
-            if [[ "${siteUrls[$i]}" == "$sharepointSiteAddress" ]]; then
-                selectedSiteId="${siteIds[$i]}"; break
-            fi
-        done
-    fi
-
-    if [[ -z "$sharepointFolderId" ]]; then
-        if [[ -z "$selectedSiteId" ]]; then
-            # Resolve via /sites/{host}:{path}
-            siteHost=$(echo "$sharepointSiteAddress" | awk -F/ '{print $3}')
-            sitePath=$(echo "$sharepointSiteAddress" | sed -E 's|^https?://[^/]+||' | sed -E 's|/$||')
-            resolveUrl="https://graph.microsoft.com/v1.0/sites/${siteHost}:${sitePath}?\$select=id"
-            resolveJson=$(graph_get "$resolveUrl" || true)
-            selectedSiteId=$(echo "$resolveJson" | jq -r '.id // empty')
-        fi
-
-        if [[ -z "$selectedSiteId" ]]; then
-            echo -e "${YELLOW}NOTE: Microsoft Graph could not resolve the site id (likely 'Sites.Read.All' is not consented for the Azure CLI).${NC}"
-            read -r -p "Document library / folder path (press Enter for '/Shared Documents'): " manualFolder
-            if [[ -z "$manualFolder" ]]; then manualFolder='/Shared Documents'; fi
-            sharepointFolderId="$manualFolder"
-        else
-            drivesJson=$(graph_get "https://graph.microsoft.com/v1.0/sites/${selectedSiteId}/drives?\$select=id,name,webUrl" || true)
-            drivesCount=$(echo "$drivesJson" | jq -r '.value | length // 0')
-            if [[ -z "$drivesJson" || "$drivesCount" == "0" ]]; then
-                echo -e "${YELLOW}NOTE: Microsoft Graph returned no document libraries for this site.${NC}"
-                read -r -p "Document library / folder path (press Enter for '/Shared Documents'): " manualFolder
-                if [[ -z "$manualFolder" ]]; then manualFolder='/Shared Documents'; fi
-                sharepointFolderId="$manualFolder"
-            else
-                mapfile -t driveIds   < <(echo "$drivesJson" | jq -r '.value[].id')
-                mapfile -t driveNames < <(echo "$drivesJson" | jq -r '.value[].name')
-                driveEntries=()
-                for n in "${driveNames[@]}"; do driveEntries+=("$n"); done
-                idx=$(select_from_list 'Select a document library:' "${driveEntries[@]}")
-                driveId="${driveIds[$idx]}"
-                folderName="${driveNames[$idx]}"
-                if [[ "$folderName" == "Documents" ]]; then folderName="Shared Documents"; fi
-                libraryRoot="/$folderName"
-
-                # Let the user pick the library root or drill into a subfolder.
-                childrenJson=$(graph_get "https://graph.microsoft.com/v1.0/drives/${driveId}/root/children?\$select=name,folder&\$top=200" 2>/dev/null || echo "")
-                childFolderEntries=("(library root: ${libraryRoot})")
-                childFolderPaths=("")
-                if [[ -n "$childrenJson" ]]; then
-                    while IFS= read -r childName; do
-                        childFolderEntries+=("$childName")
-                        childFolderPaths+=("/$childName")
-                    done < <(echo "$childrenJson" | jq -r '.value[] | select(.folder != null) | .name')
-                fi
-
-                if [[ ${#childFolderEntries[@]} -le 1 ]]; then
-                    sharepointFolderId="$libraryRoot"
-                else
-                    fidx=$(select_from_list 'Select a folder (or library root):' "${childFolderEntries[@]}")
-                    sharepointFolderId="${libraryRoot}${childFolderPaths[$fidx]}"
-                fi
-            fi
-        fi
-        azd env set SHAREPOINT_FOLDER_ID "$sharepointFolderId" >/dev/null
-        echo -e "${GREEN}Saved SHAREPOINT_FOLDER_ID=$sharepointFolderId${NC}"
-    fi
+if [[ -z "$sharepointSiteAddress" ]]; then
+    echo -e "${RED}ERROR: Missing provisioned SharePoint site URL.${NC}" >&2
+    echo "Set SHAREPOINT_SITE_URL with 'azd env set', then run 'azd provision' before rerunning this hook." >&2
+    exit 1
 fi
 
 # --- Verify the connector-namespace az CLI extension is installed ----------
@@ -380,10 +206,56 @@ connectionDetails=$(jq -nc --arg conn "${sharepointConnectionName}" \
     '{connectorName:"sharepointonline", connectionName:$conn}')
 
 # functionName | operationName | parameters JSON
-triggers=(
-    "OnSharepointNewFile|OnNewFile|$(jq -nc --arg d "$sharepointSiteAddress" --arg f "$sharepointFolderId" '[{name:"dataset",value:$d},{name:"folderId",value:$f}]')"
-    "OnSharepointUpdatedFile|OnUpdatedFile|$(jq -nc --arg d "$sharepointSiteAddress" --arg f "$sharepointFolderId" '[{name:"dataset",value:$d},{name:"folderId",value:$f}]')"
+triggers=()
+
+sharepointLibraryName=$(echo "$outputs" | jq -r '.sharepointLibraryName')
+sharepointListName=$(echo "$outputs" | jq -r '.sharepointListName')
+sharepointFolderPath=$(echo "$outputs" | jq -r '.sharepointFolderPath // empty')
+sharepointEnableDeletionTriggers=$(echo "$outputs" | jq -r '.sharepointEnableDeletionTriggers // false')
+sharepointEnableSyntexTrigger=$(echo "$outputs" | jq -r '.sharepointEnableSyntexTrigger // false')
+sharepointFormId=$(echo "$outputs" | jq -r '.sharepointFormId // empty')
+sharepointDigestSchedule=$(echo "$outputs" | jq -r '.sharepointDigestSchedule // empty')
+
+listParameters=$(jq -nc --arg d "$sharepointSiteAddress" --arg l "$sharepointListName" '[{name:"dataset",value:$d},{name:"table",value:$l}]')
+libraryParameters=$(jq -nc --arg d "$sharepointSiteAddress" --arg l "$sharepointLibraryName" --arg f "$sharepointFolderPath" \
+    '[{name:"dataset",value:$d},{name:"table",value:$l}] + (if $f == "" then [] else [{name:"folderPath",value:$f}] end)')
+triggers+=(
+    "OnSharepointChangedItems|GetOnChangedItems|${listParameters}"
+    "OnSharepointNewItems|GetOnNewItems|${listParameters}"
+    "OnSharepointUpdatedItems|GetOnUpdatedItems|${listParameters}"
+    "OnSharepointNewFileItems|GetOnNewFileItems|${libraryParameters}"
+    "OnSharepointUpdatedFileItems|GetOnUpdatedFileItems|${libraryParameters}"
 )
+
+if [[ "$sharepointEnableDeletionTriggers" == "true" ]]; then
+    triggers+=("OnSharepointDeletedItems|GetOnDeletedItems|${listParameters}" "OnSharepointDeletedFileItems|GetOnDeletedFileItems|${libraryParameters}")
+fi
+
+if [[ "$sharepointEnableSyntexTrigger" == "true" ]]; then
+    triggers+=("OnSharepointUpdatedFileClassifiedTimes|GetOnUpdatedFileClassifiedTimes|${libraryParameters}")
+fi
+
+if [[ -n "$sharepointFormId" ]]; then
+    triggers+=("OnSharepointNewItemsFromForm|GetOnNewItemsFromForm|$(jq -nc --argjson p "$listParameters" --arg f "$sharepointFormId" '$p + [{name:"form",value:$f}]')")
+fi
+
+if [[ -n "$sharepointDigestSchedule" ]]; then
+    triggers+=("OnSharepointRecurrenceDigest|GetOnRecurrenceDigest|$(jq -nc --argjson p "$libraryParameters" --arg s "$sharepointDigestSchedule" '$p + [{name:"add",value:true},{name:"update",value:true},{name:"runSchedule",value:$s}]')")
+fi
+
+existingTriggers=$(az connector-namespace trigger list -g "$resourceGroupName" --namespace "$connectorNamespaceName" --query '[].name' -o json)
+optionalFunctions=(OnSharepointDeletedItems OnSharepointDeletedFileItems OnSharepointUpdatedFileClassifiedTimes OnSharepointNewItemsFromForm OnSharepointRecurrenceDigest)
+for functionName in "${optionalFunctions[@]}"; do
+    selected=false
+    for entry in "${triggers[@]}"; do
+        if [[ "$entry" == "$functionName|"* ]]; then selected=true; break; fi
+    done
+    triggerName="${sharepointConnectionName}-$(echo "$functionName" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$selected" == "false" ]] && jq -e --arg n "$triggerName" 'index($n) != null' <<< "$existingTriggers" >/dev/null; then
+        echo "Disabling opt-in trigger: $functionName"
+        az connector-namespace trigger update -g "$resourceGroupName" --namespace "$connectorNamespaceName" -n "$triggerName" --state Disabled -o none
+    fi
+done
 
 triggerFailures=()
 for entry in "${triggers[@]}"; do
@@ -396,11 +268,10 @@ for entry in "${triggers[@]}"; do
     echo ""
     echo -e "${YELLOW}Creating trigger '${triggerName}' for ${functionName} (${operationName})...${NC}"
 
-    az connector-namespace trigger delete \
-        -g "${resourceGroupName}" --namespace "${connectorNamespaceName}" \
-        -n "${triggerName}" --yes 2>/dev/null || true
+    verb=create
+    if jq -e --arg n "$triggerName" 'index($n) != null' <<< "$existingTriggers" >/dev/null; then verb=update; fi
 
-    if ! az connector-namespace trigger create \
+    if ! az connector-namespace trigger "$verb" \
         -g "${resourceGroupName}" \
         --namespace "${connectorNamespaceName}" \
         -n "${triggerName}" \
@@ -420,6 +291,7 @@ if [[ ${#triggerFailures[@]} -eq 0 ]]; then
     echo -e "${GREEN}✅ Connector Namespace trigger configs created successfully.${NC}"
 else
     echo -e "${YELLOW}⚠  Some trigger configs failed: ${triggerFailures[*]}${NC}"
+    exit 1
 fi
 
 echo ""

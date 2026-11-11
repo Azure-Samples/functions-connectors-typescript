@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
-name: azureblobApp
+name: azureblobapp
 metadata:
     template: functions-connectors-typescript@1.0.0
 services:
@@ -20,8 +20,8 @@ hooks:
         windows:
             shell: pwsh
             run: ./infra/scripts/postdeploy.ps1
-            interactive: true
+            interactive: false
         posix:
             shell: sh
             run: ./infra/scripts/postdeploy.sh
-            interactive: true
+            interactive: false
