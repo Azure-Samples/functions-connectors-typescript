@@ -4,8 +4,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { TeamsTriggerOperations, TeamsTriggerParameters } from '../teamsApp/node_modules/@azure/connectors/dist/esm/generated/TeamsExtensions.js';
-import { collectWebhookTriggers, operationRequest, webhookTriggers } from '../teamsApp/infra/scripts/setup-webhook-triggers.mjs';
+import { TeamsTriggerOperations, TeamsTriggerParameters } from '../teamsApp/webhook/node_modules/@azure/connectors/dist/esm/generated/TeamsExtensions.js';
+import { collectWebhookTriggers, operationRequest, webhookTriggers } from '../teamsApp/webhook/infra/scripts/setup-webhook-triggers.mjs';
 
 // Only scalar descriptors come from the SDK. These synthetic dynamic schemas
 // exercise server-defined fields without claiming a particular tenant schema.
@@ -227,7 +227,7 @@ await test('connector requests resolve references, encode IDs, and preserve quer
 
 await test('both hooks collect new inputs after OAuth and before creating any triggers', async () => {
     for (const suffix of ['sh', 'ps1']) {
-        const hook = await readFile(new URL(`../teamsApp/infra/scripts/postdeploy.${suffix}`, import.meta.url), 'utf8');
+        const hook = await readFile(new URL(`../teamsApp/webhook/infra/scripts/postdeploy.${suffix}`, import.meta.url), 'utf8');
         const setup = hook.indexOf('setup-webhook-triggers.mjs');
         const authorized = hook.indexOf(suffix === 'sh' ? 'if ! authorize_connection' : 'if (-not $authorized)');
         const create = hook.indexOf('az connector-namespace trigger create');

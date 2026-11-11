@@ -42,7 +42,7 @@ metadata.folderPaths = {
 console.log(JSON.stringify(metadata));
 '@
 
-Push-Location (Join-Path $root 'teamsApp')
+Push-Location (Join-Path $root 'teamsApp/webhook')
 try {
     $json = $metadataScript | node --input-type=module -
     Assert-Condition ($LASTEXITCODE -eq 0) 'Unable to load trigger metadata from the installed SDK.'
@@ -53,7 +53,7 @@ try {
 
 function Get-TriggerConfigurations {
     param([string] $App, [hashtable] $Values)
-    $project = if ($App -eq 'office365App') { "$App\webhook" } else { $App }
+    $project = if ($App -in @('office365App', 'teamsApp')) { "$App\webhook" } else { $App }
     $ast = Read-ScriptAst (Join-Path $root "$project\infra\scripts\postdeploy.ps1")
     $variables = @('triggers', 'sharedMailboxAddress', 'sharepointListName', 'sharepointLibraryName', 'sharepointFolderPath', 'sharepointEnableDeletionTriggers', 'sharepointEnableSyntexTrigger', 'sharepointFormId', 'sharepointDigestSchedule', 'listParameters', 'libraryParameters')
     $statements = @($ast.EndBlock.Statements | Where-Object {

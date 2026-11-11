@@ -8,8 +8,41 @@ import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const apps = ['onedriveApp', 'office365App'];
+const apps = ['onedriveApp', 'office365App', 'teamsApp'];
 const selected = apps.filter((app) => process.cwd() === root || process.cwd() === path.join(root, app, 'polling'));
+
+function teamsFixture(config) {
+    const swagger = { paths: {} };
+    for (const trigger of config.triggers) {
+        swagger.paths[`/{connectionId}/${trigger.operationName}`] = { post: {
+            operationId: trigger.operationName,
+            parameters: [
+                { name: 'child', in: 'query', required: true, type: 'string',
+                    'x-ms-dynamic-list': { operationId: 'Children', parameters: { source: { parameterReference: 'source' } },
+                        itemsPath: 'value', itemValuePath: 'id', itemTitlePath: 'name' } },
+                { name: 'source', in: 'query', required: false, type: 'string',
+                    'x-ms-dynamic-values': { operationId: 'Sources', 'value-collection': 'value', 'value-path': 'id', 'value-title': 'name' } },
+                { name: 'optionalFilter', in: 'query', required: false, type: 'string' },
+                { name: 'internalValue', in: 'query', required: true, type: 'string', 'x-ms-visibility': 'internal' },
+                { name: 'requestBody', in: 'body', required: true, schema: {
+                    type: 'object', required: ['notificationUrl', 'selector'],
+                    properties: {
+                        notificationUrl: { type: 'string', 'x-ms-notification-url': true },
+                        selector: { type: 'string', 'x-ms-dynamic-list': {
+                            operationId: 'Children', parameters: { source: { parameterReference: 'source' } },
+                            itemsPath: 'value', itemValuePath: 'id', itemTitlePath: 'name',
+                        } },
+                    },
+                } },
+            ],
+        } };
+    }
+    swagger.paths['/{connectionId}/sources'] = { get: { operationId: 'Sources', parameters: [] } };
+    swagger.paths['/{connectionId}/sources/{source}/children'] = { get: {
+        operationId: 'Children', parameters: [{ name: 'source', in: 'path', required: true }],
+    } };
+    return swagger;
+}
 
 function environment(config) {
     const outputs = {
@@ -26,12 +59,16 @@ function environment(config) {
     let settings;
     let consentCompletes = true;
     let failedSource = false;
+    let optional = false;
+    let failedPicker = false;
     return {
         outputs, resources, calls,
         set consentCompletes(value) { consentCompletes = value; },
         set failedSource(value) { failedSource = value; },
+        set optional(value) { optional = value; },
+        set failedPicker(value) { failedPicker = value; },
         get settings() { return settings; },
-        choose: async (_label, choices) => choices[0].value,
+        choose: async (label, choices) => label.startsWith('Configure On') ? optional : choices[0].value,
         prompt: async (label) => assert.fail(`Unexpected free-form source selector: ${label}`),
         open: async (url) => {
             assert.equal(url, 'https://consent.example/authorize');
@@ -61,7 +98,16 @@ function environment(config) {
             assert.equal(args[0], 'rest');
             const method = args[args.indexOf('--method') + 1];
             const url = new URL(args[args.indexOf('--url') + 1]);
+            if (/\/managedApis\//.test(url.pathname)) {
+                return JSON.stringify({ properties: { apiDefinitions: { value: teamsFixture(config) } } });
+            }
             if (url.pathname.endsWith('/dynamicInvoke')) {
+                if (failedPicker) return JSON.stringify({ response: { statusCode: 403 } });
+                if (config.connectorName === 'teams') {
+                    assert.ok(body.request.path === '/sources' || body.request.path === '/sources/real%2Fsource-id/children');
+                    return JSON.stringify({ response: { statusCode: 200,
+                        body: { value: [{ id: 'real/source-id', name: 'Friendly display name' }] } } });
+                }
                 assert.ok(['/datasets/default/folders', '/datasets/default/foldersV2/real%252Fsource-id'].includes(body.request.path));
                 const listing = [{ Id: 'not-a-folder', Name: 'A file', IsFolder: false },
                     { Id: 'real/source-id', Name: 'A folder', IsFolder: true }];
@@ -96,28 +142,35 @@ for (const app of selected) {
     await test(`${app}: authorizes the connection, configures Poll listeners, and reuses saved sources`, async () => {
         const env = environment(config);
         const values = await setupPolling({ config, example, ...env, outputs: env.outputs });
-        assert.equal(env.resources.size, config.triggers.length);
+        assert.equal(env.resources.size, config.triggers.filter((trigger) => !trigger.optional).length);
         assert.equal(env.settings.ConnectorNamespace__pollingEndpoint, 'https://poll.example/api/connectorGateways/test-gateway');
         assert.equal(env.settings.ConnectorNamespace__credential, 'managedidentity');
         assert.equal(values.ConnectorNamespace__credential, undefined, 'Local settings must use developer authentication.');
         for (const trigger of config.triggers) {
             const setting = `${trigger.functionName}TriggerConfigName`;
             assert.equal(values[setting], example.Values[setting]);
+            assert.equal(values[`AzureWebJobs.${trigger.functionName}.Disabled`], String(Boolean(trigger.optional)));
         }
         for (const resource of env.resources.values()) {
             assert.equal(resource.properties.deliveryMode, 'Poll');
             assert.equal(resource.properties.notificationDetails, undefined);
             assert.equal(resource.properties.metadata.functionAppName, env.outputs.functionAppName);
             assert.equal(resource.properties.connectionDetails.connectorName, config.connectorName);
-            assert.deepEqual(resource.properties.parameters, app === 'office365App'
-                ? [{ name: 'folderPath', value: 'Inbox' }] : [{ name: 'folderId', value: 'real/source-id' }]);
+            if (app === 'teamsApp') {
+                assert.deepEqual(Object.fromEntries(resource.properties.parameters.map(({ name, value }) => [name, value])), {
+                    source: 'real/source-id', child: 'real/source-id', body: { selector: 'real/source-id' },
+                }, 'Resolve picker dependencies using IDs, omit optional filters/internal fields, and never send a Function callback.');
+            } else {
+                assert.deepEqual(resource.properties.parameters, app === 'office365App'
+                    ? [{ name: 'folderPath', value: 'Inbox' }] : [{ name: 'folderId', value: 'real/source-id' }]);
+            }
         }
         assert.ok(!env.calls.some(({ args }) => args.includes('keys')), 'Polling must not require a webhook system key.');
         env.calls.length = 0;
         await setupPolling({ config, example, ...env, outputs: env.outputs });
         assert.ok(!env.calls.some(({ args }) => args.includes('PUT') || args.includes('list-consent-links')
             || args.some((arg) => arg.includes('/dynamicInvoke'))),
-        'An unchanged redeployment must reuse authorization and the saved folder subscription.');
+        'An unchanged redeployment must reuse authorization and saved source subscriptions.');
     });
 
     await test(`${app}: Poll setup refuses to overwrite a webhook or another app source`, async () => {
@@ -168,6 +221,37 @@ for (const app of selected) {
             await assert.rejects(setupPolling({ config, example, ...env, outputs: env.outputs }), /distinct selected triggers/);
             assert.equal(env.resources.size, 0);
             assert.equal(env.settings, undefined);
+        });
+    }
+
+    if (app === 'teamsApp') {
+        await test('Teams optional Poll sources can be selected and deselected without losing selectors', async () => {
+            const env = environment(config);
+            env.optional = true;
+            await setupPolling({ config, example, ...env, outputs: env.outputs });
+            assert.equal(env.resources.size, config.triggers.length);
+            const before = structuredClone([...env.resources.values()]);
+            const kept = JSON.parse(Buffer.from(env.outputs.POLLING_TRIGGER_INPUTS, 'base64').toString('utf8'))
+                .filter((trigger) => !config.triggers.find((item) => item.functionName === trigger.functionName).optional);
+            env.outputs.POLLING_TRIGGER_INPUTS = Buffer.from(JSON.stringify(kept)).toString('base64');
+            env.calls.length = 0;
+            await setupPolling({ config, example, ...env, outputs: env.outputs });
+            for (const original of before) {
+                const resource = env.resources.get(original.name);
+                const definition = config.triggers.find((item) => item.functionName === resource.properties.metadata.functionName);
+                assert.deepEqual(resource.properties.parameters, original.properties.parameters);
+                assert.equal(resource.properties.state, definition.optional ? 'Disabled' : 'Enabled');
+                assert.equal(env.settings[`AzureWebJobs.${definition.functionName}.Disabled`], String(Boolean(definition.optional)));
+            }
+            assert.equal(env.calls.filter((call) => call.args.includes('PUT')).length, config.triggers.filter((item) => item.optional).length);
+        });
+        await test('Teams picker failures stop setup before creating sources or applying settings', async () => {
+            const env = environment(config);
+            env.failedPicker = true;
+            await assert.rejects(setupPolling({ config, example, ...env, outputs: env.outputs }), /Connector picker failed/);
+            assert.equal(env.resources.size, 0);
+            assert.equal(env.settings, undefined);
+            assert.equal(env.outputs.POLLING_TRIGGER_INPUTS, undefined);
         });
     }
 

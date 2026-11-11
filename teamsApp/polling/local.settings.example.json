@@ -1,5 +1,8 @@
 {
-    "EnablePollingSamples": "true",
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
     "OnNewChannelMessagePollTriggerConfigName": "teams-onnewchannelmessagepoll",
     "OnNewChannelMessageMentioningMePollTriggerConfigName": "teams-onnewchannelmessagementioningmepoll",
@@ -19,4 +22,5 @@
     "AzureWebJobs.OnWebhookChatMessagePoll.Disabled": "true",
     "AzureWebJobs.OnWebhookKeywordPoll.Disabled": "true",
     "AzureWebJobs.OnWebhookNewMessagePoll.Disabled": "true"
+  }
 }

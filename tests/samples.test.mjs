@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { webhookTriggers } from '../teamsApp/infra/scripts/setup-webhook-triggers.mjs';
+import { webhookTriggers } from '../teamsApp/webhook/infra/scripts/setup-webhook-triggers.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dataverseFunctions = [
@@ -43,10 +43,12 @@ const samples = {
         'OnSharepointRecurrenceDigestPoll', 'OnSharepointUpdatedFileClassifiedTimesPoll',
         'OnSharepointUpdatedFileItemsPoll', 'OnSharepointUpdatedItemsPoll',
     ],
-    teamsApp: [
+    'teamsApp/webhook': [
         'OnGroupMembershipAdd', 'OnGroupMembershipRemoval', 'OnNewChannelMessage', 'OnNewChannelMessageMentioningMe',
         'OnWebhookAtMention', 'OnWebhookMessageReaction', 'OnTranscriptAvailable', 'OnRecordingAvailable',
         'OnWebhookChatMessage', 'OnWebhookKeyword', 'OnWebhookNewMessage',
+    ],
+    'teamsApp/polling': [
         'OnGroupMembershipAddPoll', 'OnGroupMembershipRemovalPoll', 'OnNewChannelMessagePoll', 'OnNewChannelMessageMentioningMePoll',
         'OnWebhookAtMentionPoll', 'OnWebhookMessageReactionPoll', 'OnTranscriptAvailablePoll', 'OnRecordingAvailablePoll',
         'OnWebhookChatMessagePoll', 'OnWebhookKeywordPoll', 'OnWebhookNewMessagePoll',
@@ -147,7 +149,7 @@ function itemFor(appName, name, index) {
 }
 
 // Running from an app via npm test selects that app. Running from the repository
-// root exercises all fifteen apps, each with its own installed dependencies.
+// root exercises all sixteen apps, each with its own installed dependencies.
 const cwd = path.resolve(process.cwd());
 const selected = Object.entries(samples).filter(([appName]) => cwd === path.resolve(root) || cwd === path.resolve(root, appName));
 assert.ok(selected.length, 'Run tests from the repository root or a sample app directory.');
@@ -155,7 +157,7 @@ assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector exte
 
 for (const [samplePath, expectedNames] of selected) {
     await test(samplePath, async (t) => {
-        const independent = /^(azureblobApp|office365App|onedriveApp)\//.test(samplePath);
+        const independent = /^(azureblobApp|office365App|onedriveApp|teamsApp)\//.test(samplePath);
         const appName = independent ? samplePath.split('/')[0] : samplePath;
         const isIndependentPolling = independent && samplePath.endsWith('/polling');
         const appRoot = path.join(root, samplePath);
@@ -233,7 +235,7 @@ for (const [samplePath, expectedNames] of selected) {
             });
         }
 
-        if (isIndependentPolling || ['sharepointApp', 'teamsApp'].includes(appName)) {
+        if (isIndependentPolling || (!independent && ['sharepointApp', 'teamsApp'].includes(appName))) {
             await t.test('polling settings cover all listeners and keep optional sources disabled', async () => {
                 const settings = JSON.parse(await readFile(path.join(appRoot,
                     isIndependentPolling ? 'local.settings.example.json' : 'docs/polling.settings.example.json'), 'utf8'));
@@ -258,7 +260,7 @@ for (const [samplePath, expectedNames] of selected) {
             });
         }
 
-        if (samplePath === 'onedriveApp/polling') {
+        if (['onedriveApp/polling', 'teamsApp/polling'].includes(samplePath)) {
             await t.test('deployment finishes its progress display before interactive setup', async () => {
                 const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
                 const workflow = yaml.match(/^workflows:\n([\s\S]*?)(?=^\S)/m)?.[1];
@@ -394,7 +396,7 @@ for (const [samplePath, expectedNames] of selected) {
                 : [];
             assert.deepEqual([...new Set(apiCalls.values())].sort(), expected.sort());
             const nonHelperCount = (appName === 'onedriveApp' && !isIndependentPolling ? Object.keys(oneDriveContentOperations).length
-                : appName === 'teamsApp' ? webhookTriggers.length : 0)
+                : appName === 'teamsApp' && !isIndependentPolling ? webhookTriggers.length : 0)
                 + expectedNames.filter((name) => rawPollingFunctions.has(name)).length;
             assert.equal(apiCalls.size, connector ? expectedNames.length - nonHelperCount : 0);
         });
