@@ -2,10 +2,10 @@
 
 Use Node.js 24+. Run `npm ci` followed by `npm test` from any sample app directory. Each app's test command builds its TypeScript source and runs the shared suite against that app's own dependencies.
 
-To install, build, and test all twelve apps from the repository root in PowerShell:
+To install, build, and test all thirteen apps from the repository root in PowerShell:
 
 ```powershell
-$apps = 'azureblobApp', 'dataflowsApp', 'dataverseApp\polling', 'dataverseApp\webhook', 'genericApp', 'office365App', 'onedriveApp', 'plannerApp', 'salesforceApp', 'sharepointApp', 'teamsApp', 'vstsApp'
+$apps = 'azureblobApp\polling', 'azureblobApp\webhook', 'dataflowsApp', 'dataverseApp\polling', 'dataverseApp\webhook', 'genericApp', 'office365App', 'onedriveApp', 'plannerApp', 'salesforceApp', 'sharepointApp', 'teamsApp', 'vstsApp'
 foreach ($app in $apps) {
     Push-Location $app
     try {
@@ -17,7 +17,7 @@ foreach ($app in $apps) {
         Pop-Location
     }
 }
-node --test .\tests\samples.test.mjs
+node --test .\tests\samples.test.mjs .\tests\blob-polling-setup.test.mjs
 ```
 
 On other platforms, install and build each app, then run the same Node test runner against [samples.test.mjs](samples.test.mjs) from the repository root.

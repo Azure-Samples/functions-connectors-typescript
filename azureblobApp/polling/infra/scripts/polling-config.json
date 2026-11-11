@@ -1,0 +1,9 @@
+{
+    "connectorName": "azureblob",
+    "triggers": [
+        {
+            "functionName": "OnAzureBlobUpdatedFilePoll",
+            "operationName": "OnUpdatedFiles_V2"
+        }
+    ]
+}
