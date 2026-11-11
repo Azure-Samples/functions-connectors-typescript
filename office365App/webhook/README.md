@@ -12,25 +12,20 @@ Azure Functions app demonstrating typed Office 365 Outlook triggers from [`@azur
 | [OnCalendarUpdatedItems](src/functions/onCalendarUpdatedItems.ts) | `onCalendarUpdatedItems` | `CalendarGetOnUpdatedItemsV3` |
 | [OnCalendarChangedItems](src/functions/onCalendarChangedItems.ts) | `onCalendarChangedItems` | `CalendarGetOnChangedItemsV3` |
 | [OnSharedMailboxNewEmail](src/functions/onSharedMailboxNewEmail.ts) | `onSharedMailboxNewEmail` | `SharedMailboxOnNewEmailV2` |
-| [OnNewEmailPoll](src/functions/onNewEmailPoll.ts) (opt-in Poll delivery) | `onNewEmail` | `OnNewEmailV3` |
+
+For Poll delivery, use the independent [polling app](../polling/README.md).
 
 The [Connector Namespaces portal](https://connectors.azure.com/) also lists **When a new email arrives (webhook)** (`CreateOnNewEmailSubscription`). That operation is deprecated, so this project does not include function code or a subscription for it. Use **When a new email arrives (V3)** (`OnNewEmailV3`), demonstrated by [OnNewEmail](src/functions/onNewEmail.ts), instead.
 
 > These handlers log email and calendar metadata. Use a test account and avoid sensitive data.
 
-## Polling
-
-[onNewEmailPoll.ts](src/functions/onNewEmailPoll.ts) is a dedicated batched polling example, separate from the existing webhook handler. It uses `deliveryMode: DeliveryMode.Poll`, `cardinality: Cardinality.Many`, and a maximum of four Poll events per invocation. These enums are exported by `@azure/functions` starting in `4.17.1`; batching must remain explicit because cardinality defaults to `Cardinality.One`. Follow the [shared polling setup](../README.md#polling-samples), including `EnablePollingSamples=true`, the connection endpoint, and the Poll Trigger Config name.
-
-The sample is disabled by default. Deployment hooks still create only the existing webhook subscriptions; create and authorize the Poll Trigger Config separately. No public callback or tunnel is needed for local polling. `context.emails` combines emails from all events in order, while `context.rawPayload` preserves the full envelope array.
-
 ## Prerequisites
 
-Follow the [shared prerequisites](../README.md#prerequisites). You also need an Office 365 account with access to Outlook email and calendar, and permission to consent to the connector.
+Follow the [shared prerequisites](../../README.md#prerequisites). You also need an Office 365 account with access to Outlook email and calendar, and permission to consent to the connector.
 
 ## Deploy to Azure
 
-Run from `office365App`:
+Run from `office365App/webhook`:
 
 ```sh
 az login
@@ -70,7 +65,7 @@ Send an email to the connected account or create a calendar event, then inspect 
 
 ## Run locally
 
-Configure [local.settings.json](local.settings.json) for your environment and start Azurite if using the default development storage setting:
+Run `npm run setup:local`, then configure `local.settings.json` for your environment and start Azurite if using the default development storage setting:
 
 ```sh
 npm install
@@ -82,4 +77,4 @@ This builds the app and starts the Functions host. Receiving connector events lo
 ## More
 
 - [Office 365 Outlook connector operations](https://learn.microsoft.com/connectors/office365/)
-- [All TypeScript samples](../README.md#samples)
+- [All TypeScript samples](../../README.md#samples)

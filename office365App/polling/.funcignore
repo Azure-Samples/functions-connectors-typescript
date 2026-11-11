@@ -11,3 +11,4 @@ docs/
 src/
 README.md
 tsconfig.json
+local.settings.example.json

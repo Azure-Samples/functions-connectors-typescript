@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
-name: office365app
+name: office365app-polling
 metadata:
     template: functions-connectors-typescript@1.0.0
 services:
@@ -18,7 +18,11 @@ hooks:
     postdeploy:
         windows:
             shell: pwsh
-            run: ./infra/scripts/postdeploy.ps1
+            run: node ./infra/scripts/postdeploy.mjs
+            interactive: true
+            continueOnError: false
         posix:
             shell: sh
-            run: ./infra/scripts/postdeploy.sh
+            run: node ./infra/scripts/postdeploy.mjs
+            interactive: true
+            continueOnError: false

@@ -23,7 +23,8 @@ const samples = {
     'dataverseApp/polling': dataverseFunctions,
     'dataverseApp/webhook': dataverseFunctions,
     genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericOffice365NewEmailPoll', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
-    office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewEmailPoll', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
+    'office365App/webhook': ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
+    'office365App/polling': ['OnNewEmailPoll'],
     'onedriveApp/webhook': [
         'OnOneDriveNewFile', 'OnOneDriveUpdatedFile', 'OnOneDriveNewFileContent', 'OnOneDriveUpdatedFileContent',
     ],
@@ -146,7 +147,7 @@ function itemFor(appName, name, index) {
 }
 
 // Running from an app via npm test selects that app. Running from the repository
-// root exercises all fourteen apps, each with its own installed dependencies.
+// root exercises all fifteen apps, each with its own installed dependencies.
 const cwd = path.resolve(process.cwd());
 const selected = Object.entries(samples).filter(([appName]) => cwd === path.resolve(root) || cwd === path.resolve(root, appName));
 assert.ok(selected.length, 'Run tests from the repository root or a sample app directory.');
@@ -154,7 +155,7 @@ assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector exte
 
 for (const [samplePath, expectedNames] of selected) {
     await test(samplePath, async (t) => {
-        const independent = /^(azureblobApp|onedriveApp)\//.test(samplePath);
+        const independent = /^(azureblobApp|office365App|onedriveApp)\//.test(samplePath);
         const appName = independent ? samplePath.split('/')[0] : samplePath;
         const isIndependentPolling = independent && samplePath.endsWith('/polling');
         const appRoot = path.join(root, samplePath);
@@ -385,7 +386,7 @@ for (const [samplePath, expectedNames] of selected) {
 
         await t.test('every public helper except deprecated operations and duplicate aliases is exercised', () => {
             const connector = connectorSamples[appName];
-            const expected = connector
+            const expected = isIndependentPolling && appName === 'office365App' ? ['office365.onNewEmail'] : connector
                 ? Object.entries(originalNamespaces.get(connector.namespace))
                     .filter(([, register]) => typeof register === 'function')
                     .map(([method]) => `${connector.namespace}.${method}`)

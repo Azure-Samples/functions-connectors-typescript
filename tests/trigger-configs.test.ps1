@@ -53,7 +53,8 @@ try {
 
 function Get-TriggerConfigurations {
     param([string] $App, [hashtable] $Values)
-    $ast = Read-ScriptAst (Join-Path $root "$App\infra\scripts\postdeploy.ps1")
+    $project = if ($App -eq 'office365App') { "$App\webhook" } else { $App }
+    $ast = Read-ScriptAst (Join-Path $root "$project\infra\scripts\postdeploy.ps1")
     $variables = @('triggers', 'sharedMailboxAddress', 'sharepointListName', 'sharepointLibraryName', 'sharepointFolderPath', 'sharepointEnableDeletionTriggers', 'sharepointEnableSyntexTrigger', 'sharepointFormId', 'sharepointDigestSchedule', 'listParameters', 'libraryParameters')
     $statements = @($ast.EndBlock.Statements | Where-Object {
         ($_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and $_.Left.VariablePath.UserPath -in $variables) -or
