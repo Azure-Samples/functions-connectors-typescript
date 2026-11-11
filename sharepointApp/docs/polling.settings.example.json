@@ -1,0 +1,19 @@
+{
+    "EnablePollingSamples": "true",
+    "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
+    "OnSharepointChangedItemsPollTriggerConfigName": "sharepoint-onsharepointchangeditemspoll",
+    "OnSharepointDeletedFileItemsPollTriggerConfigName": "sharepoint-onsharepointdeletedfileitemspoll",
+    "OnSharepointDeletedItemsPollTriggerConfigName": "sharepoint-onsharepointdeleteditemspoll",
+    "OnSharepointNewFileItemsPollTriggerConfigName": "sharepoint-onsharepointnewfileitemspoll",
+    "OnSharepointNewItemsPollTriggerConfigName": "sharepoint-onsharepointnewitemspoll",
+    "OnSharepointNewItemsFromFormPollTriggerConfigName": "sharepoint-onsharepointnewitemsfromformpoll",
+    "OnSharepointRecurrenceDigestPollTriggerConfigName": "sharepoint-onsharepointrecurrencedigestpoll",
+    "OnSharepointUpdatedFileClassifiedTimesPollTriggerConfigName": "sharepoint-onsharepointupdatedfileclassifiedtimespoll",
+    "OnSharepointUpdatedFileItemsPollTriggerConfigName": "sharepoint-onsharepointupdatedfileitemspoll",
+    "OnSharepointUpdatedItemsPollTriggerConfigName": "sharepoint-onsharepointupdateditemspoll",
+    "AzureWebJobs.OnSharepointDeletedFileItemsPoll.Disabled": "true",
+    "AzureWebJobs.OnSharepointDeletedItemsPoll.Disabled": "true",
+    "AzureWebJobs.OnSharepointNewItemsFromFormPoll.Disabled": "true",
+    "AzureWebJobs.OnSharepointRecurrenceDigestPoll.Disabled": "true",
+    "AzureWebJobs.OnSharepointUpdatedFileClassifiedTimesPoll.Disabled": "true"
+}

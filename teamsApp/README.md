@@ -70,6 +70,18 @@ These operation-specific inputs are collected each time you rerun the hook; only
 
 Some choices require extra connector permissions or tenant access. Empty/failed picker responses, unavailable operations, or unsupported schemas stop setup rather than creating guessed configurations. Rerun the hook to retry or explicitly skip an unavailable trigger. Skipping a new trigger omits its configuration for that run; its handler still registers, and existing deployed configurations are not automatically deleted.
 
+## Polling
+
+[The polling examples](src/functions/onTeamsPoll.ts) cover all eleven operations in the table above. Each adds `Poll` to its webhook function name, for example `OnNewChannelMessagePoll`, with a matching `OnNewChannelMessagePollTriggerConfigName` setting. An operation named `Webhook...` can still use service **Poll delivery**; that name describes the connector source, not how the Function App receives events.
+
+Follow the [shared Poll setup](../README.md#polling-samples). Use the authorized `teams` connection and create separate enabled Poll configs. The original four sources use the actual team/channel inputs already selected by setup; the seven additional sources require the same operation-specific dynamic values described above. Discover valid selectors through the SDK metadata and authenticated connector pickers rather than inventing a fixed schema. Do not convert existing webhook configs.
+
+Merge [polling.settings.example.json](docs/polling.settings.example.json) into local settings `Values`, replacing the namespace endpoint and config names. The global `EnablePollingSamples` flag must be exactly `"true"`. The example leaves the seven additional listeners disabled through `AzureWebJobs.<FunctionName>.Disabled`; create each selected source before changing its setting to `"false"`. Retain config-name settings for disabled listeners.
+
+For Azure, apply the same settings plus `ConnectorNamespace__credential=managedidentity`. No public Function callback, connector extension key, or tunnel is needed. The first four examples use typed helpers and log receipt/count only; the other seven use raw handlers that preserve event-specific envelopes and never log message, membership, transcript, or recording contents. Existing hooks remain webhook-only; Poll sources are configured manually.
+
+Verify source registration, then post a test message, mention the connected user, change membership, or generate the selected optional event. These offline samples do not establish that every optional operation is available in your tenant.
+
 ## Verify
 
 Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Microsoft Teams connection in `Connected` state and eleven triggers in `Enabled` state if you configured all seven additional operations, or four plus the number you configured. The [example namespace overview](docs/connectors-namespace-overview-teams.png) predates the additional webhook examples.

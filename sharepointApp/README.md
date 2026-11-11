@@ -91,6 +91,16 @@ The hook consumes provisioned configuration. After changing these settings, reru
 azd hooks run postdeploy
 ```
 
+## Polling
+
+[The polling examples](src/functions/onSharepointPoll.ts) cover all ten non-deprecated operations in the table above. Each Poll function adds `Poll` to its webhook function name, for example `OnSharepointNewItemsPoll`; its setting is `OnSharepointNewItemsPollTriggerConfigName`. The operation ID and source parameters are unchanged.
+
+Follow the [shared Poll setup](../README.md#polling-samples). Create separate enabled Poll configs with connector ID `sharepointonline`, the same site-root `dataset`, and the actual library/list `table`. File/digest sources may use `folderPath`; item/form sources do not. Form submissions require `form`; recurring digests require `add=true`, `update=true`, and `runSchedule`. Use the SDK metadata for exact required parameters. Do not convert existing webhook configs.
+
+Merge [polling.settings.example.json](docs/polling.settings.example.json) into local settings `Values`, replacing the endpoint and config names. It registers polling only when `EnablePollingSamples` is exactly `"true"` and leaves the five optional deletion, form, classification, and digest listeners disabled through `AzureWebJobs.<FunctionName>.Disabled`. Create each optional source with the permissions/inputs described above before changing its disabled setting to `"false"`. Retain the config-name settings even for disabled listeners.
+
+For Azure, apply the same settings plus `ConnectorNamespace__credential=managedidentity`. Existing `SHAREPOINT_*` deployment options and hooks control webhook functions only, not these separate Poll listeners. Polling needs no public callback, connector extension key, or tunnel. These handlers log only receipt and item count, not list/file contents. Verify source registration, then generate an event in the selected list/library.
+
 ## Verify
 
 Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one SharePoint Online connection in `Connected` state and five default triggers in `Enabled` state, or up to ten with all optional settings selected.

@@ -74,6 +74,16 @@ npm start
 
 This builds the app and starts the Functions host. Receiving connector events locally also requires a reachable HTTPS callback and a separate trigger configuration targeting it; `npm start` does not create subscriptions.
 
+## Polling
+
+[OnAzureBlobUpdatedFilePoll](src/functions/onAzureBlobPoll.ts) receives the same `OnUpdatedFiles_V2` operation using `DeliveryMode.Poll`. Unlike the default Webhook delivery, it needs no public Function callback, connector extension key, or tunnel. It uses the SDK's `BlobMetadata` with the generic helper, logs only receipt and item count, and preserves `context.rawPayload`.
+
+Follow the [shared Poll setup](../README.md#polling-samples). Create a separate enabled Poll config using the existing authorized `azureblob` connection, the monitored account name as `dataset`, and the same encoded container `folderId` used by the deployment hook. Do not convert the existing webhook config.
+
+Merge [polling.settings.example.json](docs/polling.settings.example.json) into the local settings `Values`, replace the namespace endpoint and config name, then run `npm start`. For Azure, apply the same settings plus `ConnectorNamespace__credential=managedidentity`. The namespace identity still needs its monitored-container permissions; the receiving identity needs connection access.
+
+The sample registers only when `EnablePollingSamples` is exactly `"true"`. Existing hooks create webhook subscriptions only; Poll configuration is manual. Verify source registration, upload a small test blob, and check for `OnAzureBlobUpdatedFilePoll trigger received.` Allow for the connector's polling interval and RBAC propagation.
+
 ## More
 
 - [Azure Blob Storage connector operations](https://learn.microsoft.com/connectors/azureblob/)

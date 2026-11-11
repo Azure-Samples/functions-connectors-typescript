@@ -1,0 +1,8 @@
+{
+    "EnablePollingSamples": "true",
+    "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
+    "OnOneDriveNewFilePollTriggerConfigName": "onedrive-ononedrivenewfilepoll",
+    "OnOneDriveUpdatedFilePollTriggerConfigName": "onedrive-ononedriveupdatedfilepoll",
+    "OnOneDriveNewFileContentPollTriggerConfigName": "onedrive-ononedrivenewfilecontentpoll",
+    "OnOneDriveUpdatedFileContentPollTriggerConfigName": "onedrive-ononedriveupdatedfilecontentpoll"
+}

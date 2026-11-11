@@ -1,0 +1,13 @@
+.azure/
+.git/
+.vscode/
+local.settings.json
+local.settings.example.json
+*.code-workspace
+__azurite_db_*.json
+__blobstorage__/
+__queuestorage__/
+infra/
+src/
+README.md
+tsconfig.json

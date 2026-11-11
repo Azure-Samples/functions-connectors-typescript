@@ -1,0 +1,5 @@
+{
+    "EnablePollingSamples": "true",
+    "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
+    "OnAzureBlobUpdatedFilePollTriggerConfigName": "azureblob-onazureblobupdatedfilepoll"
+}

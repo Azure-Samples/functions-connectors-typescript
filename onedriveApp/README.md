@@ -72,6 +72,23 @@ npm start
 
 This builds the app and starts the Functions host. Receiving connector events locally also requires a reachable HTTPS callback and a separate trigger configuration targeting it; `npm start` does not create subscriptions.
 
+## Polling
+
+[The polling examples](src/functions/onOneDrivePoll.ts) cover all four operations without a public Function callback, connector extension key, or tunnel:
+
+| Poll function | Connector operation |
+| --- | --- |
+| `OnOneDriveNewFilePoll` | `OnNewFilesV2` |
+| `OnOneDriveUpdatedFilePoll` | `OnUpdatedFilesV2` |
+| `OnOneDriveNewFileContentPoll` | `OnNewFileV2` |
+| `OnOneDriveUpdatedFileContentPoll` | `OnUpdatedFileV2` |
+
+Follow the [shared Poll setup](../README.md#polling-samples). Create distinct enabled Poll configs using the authorized `onedriveforbusiness` connection and the real selected `folderId` from the existing setup. The literal `root` is still not a valid trigger folder ID. Do not change the existing webhook configs.
+
+Merge [polling.settings.example.json](docs/polling.settings.example.json) into local settings `Values`. Replace the endpoint and all four config names before setting `EnablePollingSamples` to exactly `"true"`. To run only a subset, retain a config-name setting for every registered function and set `AzureWebJobs.<FunctionName>.Disabled="true"` for unselected listeners. For Azure, apply the settings plus `ConnectorNamespace__credential=managedidentity`.
+
+The metadata functions use typed helpers and log only receipt and count. The two content functions use the raw host API, preserve every envelope unchanged, and never parse or log file contents. All use single-event Poll delivery; the metadata body can itself contain multiple files. Existing deployment hooks remain webhook-only; configure Poll sources manually, verify source registration, and create or update a small test file.
+
 ## More
 
 - [OneDrive for Business connector operations](https://learn.microsoft.com/connectors/onedriveforbusiness/)
