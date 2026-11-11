@@ -4,8 +4,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { constants } from 'node:fs';
-import { access, readdir, readFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
@@ -54,7 +55,7 @@ const samples = {
         'OnWebhookAtMentionPoll', 'OnWebhookMessageReactionPoll', 'OnTranscriptAvailablePoll', 'OnRecordingAvailablePoll',
         'OnWebhookChatMessagePoll', 'OnWebhookKeywordPoll', 'OnWebhookNewMessagePoll',
     ],
-    vstsApp: [
+    'vstsApp/webhook': [
         'OnVstsBuildCompleted', 'OnVstsGitPullClosed', 'OnVstsGitPullCreated', 'OnVstsGitPush',
         'OnVstsTfvcCheckIn', 'OnVstsWorkItemAssigned', 'OnVstsWorkItemClosed',
         'OnVstsWorkItemCreated', 'OnVstsWorkItemUpdated',
@@ -158,7 +159,7 @@ assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector exte
 
 for (const [samplePath, expectedNames] of selected) {
     await test(samplePath, async (t) => {
-        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|teamsApp)\//.test(samplePath);
+        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|teamsApp|vstsApp)\//.test(samplePath);
         const appName = independent ? samplePath.split('/')[0] : samplePath;
         const isIndependentPolling = independent && samplePath.endsWith('/polling');
         const appRoot = path.join(root, samplePath);
@@ -224,11 +225,68 @@ for (const [samplePath, expectedNames] of selected) {
             assert.equal(host.version, '2.0');
             assert.equal(host.extensionBundle.id, 'Microsoft.Azure.Functions.ExtensionBundle.Preview');
             if (!isGeneric) {
-                const runtimeApp = isDataverse || (connectorSamples[appName] && !appsWithHooks.has(appName)) ? 'genericApp' : samplePath;
+                const runtimeApp = isDataverse || (connectorSamples[appName] && !appsWithHooks.has(appName) && appName !== 'vstsApp') ? 'genericApp' : samplePath;
                 const infrastructure = await readFile(path.join(root, runtimeApp, 'infra/resources.bicep'), 'utf8');
                 assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
             }
         });
+
+        if (appName === 'vstsApp') {
+            await t.test('local setup creates settings without overwriting an existing file', async () => {
+                const directory = await mkdtemp(path.join(tmpdir(), 'connector-local-settings-'));
+                try {
+                    const scripts = path.join(directory, 'infra/scripts');
+                    await mkdir(scripts, { recursive: true });
+                    const script = path.join(scripts, 'local-settings.mjs');
+                    await copyFile(path.join(appRoot, 'infra/scripts/local-settings.mjs'), script);
+                    const example = await readFile(path.join(appRoot, 'local.settings.example.json'), 'utf8');
+                    await writeFile(path.join(directory, 'local.settings.example.json'), example);
+                    const run = () => {
+                        const result = spawnSync(process.execPath, [script], { cwd: directory, encoding: 'utf8', timeout: 5000 });
+                        assert.ifError(result.error);
+                        assert.equal(result.status, 0, result.stderr);
+                    };
+                    run();
+                    const local = path.join(directory, 'local.settings.json');
+                    assert.equal(await readFile(local, 'utf8'), example);
+                    await writeFile(local, 'existing user settings');
+                    run();
+                    assert.equal(await readFile(local, 'utf8'), 'existing user settings');
+                } finally {
+                    await rm(directory, { recursive: true, force: true });
+                }
+            });
+            await t.test('deployment finishes its progress display before interactive setup', async () => {
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                const workflow = yaml.match(/^workflows:\n([\s\S]*?)(?=^\S)/m)?.[1];
+                assert.ok(workflow, 'Use standalone commands instead of the unified up graph.');
+                assert.deepEqual([...workflow.matchAll(/^\s+- azd:\s*(.+)$/gm)].map((match) => match[1]),
+                    ['package --all', 'provision', 'deploy --all']);
+                assert.match(yaml, /^hooks:\n[\s\S]*?^    postdeploy:/m, 'Keep setup on the project command hook, after standalone deploy returns.');
+                assert.doesNotMatch(yaml, /^\s+postup:/m, 'Do not run setup twice during azd up.');
+            });
+            await t.test('VSTS deploys its own namespace and policies and maps webhook setup to the SDK operations', async () => {
+                const { webhookTriggers: triggers } = await import('../vstsApp/webhook/infra/scripts/trigger-inputs.mjs');
+                const sdkModule = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/generated/VisualstudioteamservicesExtensions.js')));
+                assert.deepEqual(triggers.map((trigger) => trigger.functionName).sort(), [...expectedNames].sort());
+                for (const trigger of triggers) {
+                    assert.ok(Object.values(sdkModule.VisualstudioteamservicesTriggerOperations).includes(trigger.operationName));
+                }
+                const namespace = await readFile(path.join(appRoot, 'infra/connectorNamespace.bicep'), 'utf8');
+                assert.match(namespace, /connectorName: 'visualstudioteamservices'/);
+                assert.match(namespace, /parameterValueSet:\s*\{\s*name: 'EntraOAuth'/);
+                assert.match(namespace, /objectId: functionAppPrincipalId/);
+                assert.match(namespace, /objectId: userPrincipalId/);
+                const resources = await readFile(path.join(appRoot, 'infra/resources.bicep'), 'utf8');
+                assert.match(resources, /VstsConnection: connectorNamespace\.outputs\.vstsConnectionRuntimeUrl/);
+                assert.doesNotMatch(resources, /\bConnectorToken\b|\bConnectorRuntimeUrl\b/);
+                const entrypoint = await readFile(path.join(appRoot, 'infra/main.bicep'), 'utf8');
+                assert.doesNotMatch(entrypoint, /module\s+\w+\s+'\.\.\//, 'VSTS must not import another app\'s infrastructure.');
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                assert.equal((yaml.match(/run: node \.\/infra\/scripts\/postdeploy\.mjs/g) ?? []).length, 2);
+                assert.equal((yaml.match(/interactive: true/g) ?? []).length, 2);
+            });
+        }
 
         if (isDataverse) {
             await t.test('Dataverse uses shared infrastructure, manual setup, and safe local settings', async () => {

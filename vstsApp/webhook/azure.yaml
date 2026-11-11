@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
-name: vstsapp
+name: vstsapp-webhook
 metadata:
     template: functions-connectors-typescript@1.0.0
 services:
@@ -7,6 +7,11 @@ services:
         project: .
         language: ts
         host: function
+workflows:
+    up:
+        - azd: package --all
+        - azd: provision
+        - azd: deploy --all
 hooks:
     prepackage:
         windows:
@@ -18,3 +23,14 @@ hooks:
         posix:
             shell: sh
             run: npm install && npm run build
+    postdeploy:
+        windows:
+            shell: pwsh
+            run: node ./infra/scripts/postdeploy.mjs
+            interactive: true
+            continueOnError: false
+        posix:
+            shell: sh
+            run: node ./infra/scripts/postdeploy.mjs
+            interactive: true
+            continueOnError: false

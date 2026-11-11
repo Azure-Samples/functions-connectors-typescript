@@ -5,7 +5,7 @@ Use Node.js 24+. Run `npm ci` followed by `npm test` from any sample app directo
 To install, build, and test all seventeen apps from the repository root in PowerShell:
 
 ```powershell
-$apps = 'azureblobApp\polling', 'azureblobApp\webhook', 'dataflowsApp', 'dataverseApp\polling', 'dataverseApp\webhook', 'genericApp\polling', 'genericApp\webhook', 'office365App\polling', 'office365App\webhook', 'onedriveApp\polling', 'onedriveApp\webhook', 'plannerApp', 'salesforceApp', 'sharepointApp', 'teamsApp\polling', 'teamsApp\webhook', 'vstsApp'
+$apps = 'azureblobApp\polling', 'azureblobApp\webhook', 'dataflowsApp', 'dataverseApp\polling', 'dataverseApp\webhook', 'genericApp\polling', 'genericApp\webhook', 'office365App\polling', 'office365App\webhook', 'onedriveApp\polling', 'onedriveApp\webhook', 'plannerApp', 'salesforceApp', 'sharepointApp', 'teamsApp\polling', 'teamsApp\webhook', 'vstsApp\webhook'
 foreach ($app in $apps) {
     Push-Location $app
     try {
@@ -17,7 +17,7 @@ foreach ($app in $apps) {
         Pop-Location
     }
 }
-node --test .\tests\samples.test.mjs .\tests\blob-polling-setup.test.mjs .\tests\polling-setup.test.mjs .\tests\teams-setup.test.mjs
+node --test .\tests\samples.test.mjs .\tests\blob-polling-setup.test.mjs .\tests\polling-setup.test.mjs .\tests\teams-setup.test.mjs .\tests\vsts-setup.test.mjs
 ```
 
 On other platforms, install and build each app, then run the same Node test runner against [samples.test.mjs](samples.test.mjs) from the repository root.
@@ -36,6 +36,7 @@ The suite checks:
 - Both Office 365 hooks subscribe only one function to the new-calendar operation and omit the deprecated webhook email operation.
 - Office 365 polling setup authorizes the connection, creates an Inbox Poll source, reuses saved subscriptions, refuses unowned configurations, and reports consent/source-registration failures without applying incomplete settings.
 - Both Teams hooks use the shared authenticated setup for seven additional operations from the installed SDK.
+- Azure DevOps webhook setup covers Entra OAuth consent, required-only authenticated organization/project/repository/team/member pickers without optional-filter lookups, empty and failed required lookups, saved selections, callback-key rotation, source ownership, and non-destructive deselection for all nine operations.
 - Teams Poll setup covers picker-ID dependencies, callback omission, optional-source selection/deselection, saved-input reuse, and lookup failures before source creation. Its sequential azd workflow is checked to prevent obscured setup prompts.
 - Twelve payload scenarios per normalized handler: object and JSON batches, object and JSON single items, empty batches, missing bodies, null payloads, malformed JSON, mixed polling envelope arrays as objects and JSON, a polling envelope containing multiple items, and an empty polling array.
 - Thirteen opaque-event scenarios per Generic polling, raw Dataverse, OneDrive content, and additional Teams Poll handler cover binary buffers, binary/text/JSON envelopes, raw text, JSON file contents, empty content, null/undefined payloads, malformed JSON, dynamic records, and object/JSON polling arrays. Generic only acknowledges receipt; the other raw handlers preserve payload identity. Event contents are never logged.
