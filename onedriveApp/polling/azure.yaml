@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
-name: onedriveapp
+name: onedriveapp-polling
 metadata:
     template: functions-connectors-typescript@1.0.0
 services:
@@ -7,6 +7,11 @@ services:
         project: .
         language: ts
         host: function
+workflows:
+    up:
+        - azd: package --all
+        - azd: provision
+        - azd: deploy --all
 hooks:
     prepackage:
         windows:
@@ -18,9 +23,11 @@ hooks:
     postdeploy:
         windows:
             shell: pwsh
-            run: ./infra/scripts/postdeploy.ps1
+            run: node ./infra/scripts/postdeploy.mjs
             interactive: true
+            continueOnError: false
         posix:
             shell: sh
-            run: ./infra/scripts/postdeploy.sh
+            run: node ./infra/scripts/postdeploy.mjs
             interactive: true
+            continueOnError: false

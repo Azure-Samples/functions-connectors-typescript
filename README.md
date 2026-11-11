@@ -13,7 +13,7 @@ TypeScript samples for the [Azure Functions Connector Samples](https://github.co
 | [dataverseApp](dataverseApp/) | [Microsoft Dataverse](https://learn.microsoft.com/connectors/commondataservice/) | Separate polling/webhook apps: row changes, optional action-performed and separate row events |
 | [genericApp](genericApp/) | Any connector | Generic `connectorTrigger<TItem>` examples with custom item types; opt-in single-event polling |
 | [office365App](office365App/) | [Office 365 Outlook](https://learn.microsoft.com/connectors/office365/) | New, flagged, mentioning-you, and shared mailbox emails; new, updated, changed, and upcoming calendar events; opt-in batched email polling |
-| [onedriveApp](onedriveApp/) | [OneDrive for Business](https://learn.microsoft.com/connectors/onedriveforbusiness/) | New and updated file content and metadata; opt-in polling |
+| [onedriveApp](onedriveApp/) | [OneDrive for Business](https://learn.microsoft.com/connectors/onedriveforbusiness/) | New and updated file content and metadata; separate polling/webhook apps |
 | [plannerApp](plannerApp/) | [Planner](https://learn.microsoft.com/connectors/planner/) | New, completed, and assigned-to-me tasks |
 | [salesforceApp](salesforceApp/) | [Salesforce](https://learn.microsoft.com/connectors/salesforce/) | New and updated records |
 | [sharepointApp](sharepointApp/) | [SharePoint Online](https://learn.microsoft.com/connectors/sharepointonline/) | File metadata, file properties, list items, deletions, forms, classification changes, and recurring digests; opt-in polling |
@@ -65,7 +65,7 @@ Polling examples live in separate files; existing webhook handlers and deploymen
 | [office365App](office365App/) | [OnNewEmailPoll](office365App/src/functions/onNewEmailPoll.ts) | Typed helper; up to four Poll events per invocation |
 | [genericApp](genericApp/) | [OnGenericOffice365NewEmailPoll](genericApp/src/functions/onGenericOffice365NewEmailPoll.ts) | Generic API; one Poll event per invocation, up to four concurrent calls |
 | [azureblobApp/polling](azureblobApp/polling/README.md) | [Blob polling](azureblobApp/polling/src/functions/onAzureBlobPoll.ts) | One generic metadata handler |
-| [onedriveApp](onedriveApp/README.md#polling) | [OneDrive polling](onedriveApp/src/functions/onOneDrivePoll.ts) | Two typed metadata and two opaque-content handlers |
+| [onedriveApp/polling](onedriveApp/polling/README.md) | [OneDrive polling](onedriveApp/polling/src/functions/onOneDrivePoll.ts) | Two typed metadata and two opaque-content handlers |
 | [sharepointApp](sharepointApp/README.md#polling) | [SharePoint polling](sharepointApp/src/functions/onSharepointPoll.ts) | All ten non-deprecated operations |
 | [teamsApp](teamsApp/README.md#polling) | [Teams polling](teamsApp/src/functions/onTeamsPoll.ts) | Four typed and seven raw event handlers |
 | [dataverseApp/polling](dataverseApp/polling/) | [Dataverse polling](dataverseApp/polling/src/functions/dataverseTriggers.ts) | Five raw events; combined row changes enabled by default |
@@ -73,6 +73,8 @@ Polling examples live in separate files; existing webhook handlers and deploymen
 The Office 365 and generic examples both use Outlook's `OnNewEmailV3` operation. Other connectors use the operations and source parameters in their app READMEs. Choose one receiving function per Poll Trigger Config; listeners sharing a configuration compete for events. A Poll event can itself contain several items, independently of invocation cardinality.
 
 Blob uses an independent [Poll app](azureblobApp/polling/README.md) with automatic namespace, managed-identity connection, monitored storage/container, and Poll trigger setup during `azd up`. It does not require `EnablePollingSamples` or the manual setup below. Its [webhook app](azureblobApp/webhook/README.md) deploys separately.
+
+OneDrive also has independent [polling](onedriveApp/polling/README.md) and [webhook](onedriveApp/webhook/README.md) apps. Its polling `azd up` provisions the namespace/connection, guides OAuth consent and folder selection, and configures Poll triggers and app settings automatically. It does not require `EnablePollingSamples` or the manual setup below.
 
 1. Create an authorized connection and an enabled Trigger Config with service `deliveryMode: "Poll"`, **without** webhook `notificationDetails`. Follow the extension's [Poll configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery) for the ARM request and access policies. Authorize both the namespace identity that runs the connector trigger and the Function/developer identity that receives Poll events. Existing deployment hooks create webhook subscriptions only.
 2. For Office 365 or the generic example, merge these entries into the chosen app's `local.settings.json` `Values` object:
@@ -85,14 +87,14 @@ Blob uses an independent [Poll app](azureblobApp/polling/README.md) with automat
    }
    ```
 
-   For OneDrive, SharePoint, and Teams, merge the app's linked `docs/polling.settings.example.json` instead. Each function uses a `<FunctionName>TriggerConfigName` setting; the generic Outlook example deliberately shares `OnNewEmailPollTriggerConfigName`. Create a separate config for each enabled function, preserving existing webhook configurations. The SharePoint and Teams examples keep optional listeners disabled using `AzureWebJobs.<FunctionName>.Disabled`; configure their sources before setting those values to `"false"`. Retain config-name settings even for disabled listeners so binding expressions remain resolvable.
+   For SharePoint and Teams, merge the app's linked `docs/polling.settings.example.json` instead. Each function uses a `<FunctionName>TriggerConfigName` setting; the generic Outlook example deliberately shares `OnNewEmailPollTriggerConfigName`. Create a separate config for each enabled function, preserving existing webhook configurations. The SharePoint and Teams examples keep optional listeners disabled using `AzureWebJobs.<FunctionName>.Disabled`; configure their sources before setting those values to `"false"`. Retain config-name settings even for disabled listeners so binding expressions remain resolvable.
 
    `ConnectorNamespace` is a configuration prefix, not a connector connection resource name. Derive its endpoint from the Trigger Config's service-generated `pollingEndpoints.receiveUri`: remove `/triggerconfigs/<name>/receive` and the query string, preserving any `/api/connectorGateways/<id>` prefix. For stable namespace DNS, use only `https://<connector-namespace-host>`, with no `/api` suffix. Never commit real endpoints or credentials.
 3. Use a host Connector extension that supports Poll delivery, sign in with `az login`, start Azurite if needed, and run `npm start` from the chosen app. No public callback URL or tunnel is required. Preview bundles can lag the current extension source; verify the selected bundle's contents using the [host extension guidance](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#non-net-workers).
 
 For Azure, add the same settings to the Function App and set `ConnectorNamespace__credential=managedidentity`; grant its managed identity access to the connection. Restart the host after changing settings.
 
-The five mixed-delivery apps do not register polling samples unless `EnablePollingSamples` is exactly `true`, so existing deployments do not require new connection settings. Blob and Dataverse have dedicated Poll apps instead; use their mode-specific setup and settings templates. Dataverse also has optional-event flags.
+The four mixed-delivery apps do not register polling samples unless `EnablePollingSamples` is exactly `true`, so existing deployments do not require new connection settings. Blob, OneDrive, and Dataverse have dedicated Poll apps instead; use their mode-specific setup and settings templates. Dataverse also has optional-event flags.
 
 Typed/generic handlers receive flattened, ordered items; `context.rawPayload` retains the complete parsed envelope array and metadata. Raw Dataverse, OneDrive content, and additional Teams Poll handlers bypass normalization and preserve the original input, including strings and binary payloads. The four newly added connector polling examples log receipt/count only, not event contents. `maxConcurrentCalls` is used only by the generic Outlook single-event example, not the batched example.
 

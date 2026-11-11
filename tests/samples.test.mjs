@@ -24,8 +24,10 @@ const samples = {
     'dataverseApp/webhook': dataverseFunctions,
     genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericOffice365NewEmailPoll', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
     office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewEmailPoll', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
-    onedriveApp: [
+    'onedriveApp/webhook': [
         'OnOneDriveNewFile', 'OnOneDriveUpdatedFile', 'OnOneDriveNewFileContent', 'OnOneDriveUpdatedFileContent',
+    ],
+    'onedriveApp/polling': [
         'OnOneDriveNewFilePoll', 'OnOneDriveUpdatedFilePoll', 'OnOneDriveNewFileContentPoll', 'OnOneDriveUpdatedFileContentPoll',
     ],
     plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
@@ -144,7 +146,7 @@ function itemFor(appName, name, index) {
 }
 
 // Running from an app via npm test selects that app. Running from the repository
-// root exercises all thirteen apps, each with its own installed dependencies.
+// root exercises all fourteen apps, each with its own installed dependencies.
 const cwd = path.resolve(process.cwd());
 const selected = Object.entries(samples).filter(([appName]) => cwd === path.resolve(root) || cwd === path.resolve(root, appName));
 assert.ok(selected.length, 'Run tests from the repository root or a sample app directory.');
@@ -152,8 +154,9 @@ assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector exte
 
 for (const [samplePath, expectedNames] of selected) {
     await test(samplePath, async (t) => {
-        const appName = samplePath.startsWith('azureblobApp/') ? 'azureblobApp' : samplePath;
-        const isBlobPolling = samplePath === 'azureblobApp/polling';
+        const independent = /^(azureblobApp|onedriveApp)\//.test(samplePath);
+        const appName = independent ? samplePath.split('/')[0] : samplePath;
+        const isIndependentPolling = independent && samplePath.endsWith('/polling');
         const appRoot = path.join(root, samplePath);
         const require = createRequire(path.join(appRoot, 'package.json'));
         const isDataverse = appName.startsWith('dataverseApp/');
@@ -189,7 +192,7 @@ for (const [samplePath, expectedNames] of selected) {
             const projectName = azureYaml.match(/^name:\s*(\S+)\s*$/m)?.[1];
             assert.ok(projectName && projectName.length >= 2, 'The azd project must have a name.');
             assert.match(projectName, /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/, 'The azd schema requires a lowercase project-name slug.');
-            if (appsWithHooks.has(appName) && !isBlobPolling && process.platform !== 'win32') {
+            if (appsWithHooks.has(appName) && !isIndependentPolling && process.platform !== 'win32') {
                 await assert.doesNotReject(
                     access(path.join(appRoot, 'infra/scripts/postdeploy.sh'), constants.X_OK),
                     'The POSIX postdeploy hook must be executable because azd invokes it directly.',
@@ -229,12 +232,12 @@ for (const [samplePath, expectedNames] of selected) {
             });
         }
 
-        if (isBlobPolling || ['onedriveApp', 'sharepointApp', 'teamsApp'].includes(appName)) {
+        if (isIndependentPolling || ['sharepointApp', 'teamsApp'].includes(appName)) {
             await t.test('polling settings cover all listeners and keep optional sources disabled', async () => {
                 const settings = JSON.parse(await readFile(path.join(appRoot,
-                    isBlobPolling ? 'local.settings.example.json' : 'docs/polling.settings.example.json'), 'utf8'));
-                const example = isBlobPolling ? settings.Values : settings;
-                assert.equal(example.EnablePollingSamples, isBlobPolling ? undefined : 'true');
+                    isIndependentPolling ? 'local.settings.example.json' : 'docs/polling.settings.example.json'), 'utf8'));
+                const example = isIndependentPolling ? settings.Values : settings;
+                assert.equal(example.EnablePollingSamples, isIndependentPolling ? undefined : 'true');
                 assert.equal(example.ConnectorNamespace__pollingEndpoint, 'https://<connector-namespace-host>');
                 assert.equal(example.ConnectorNamespace__credential, undefined, 'Use the developer identity locally.');
                 const expected = expectedNames.filter((name) => name.endsWith('Poll'));
@@ -250,7 +253,19 @@ for (const [samplePath, expectedNames] of selected) {
                 assert.deepEqual(disabled.sort(), optional.map((name) => `AzureWebJobs.${name}.Disabled`).sort());
                 for (const key of disabled) assert.equal(example[key], 'true');
                 const ignored = (await readFile(path.join(appRoot, '.funcignore'), 'utf8')).split(/\r?\n/);
-                assert.ok(ignored.includes(isBlobPolling ? 'local.settings.example.json' : 'docs/'), 'Do not package the settings examples.');
+                assert.ok(ignored.includes(isIndependentPolling ? 'local.settings.example.json' : 'docs/'), 'Do not package the settings examples.');
+            });
+        }
+
+        if (samplePath === 'onedriveApp/polling') {
+            await t.test('deployment finishes its progress display before interactive setup', async () => {
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                const workflow = yaml.match(/^workflows:\n([\s\S]*?)(?=^\S)/m)?.[1];
+                assert.ok(workflow, 'Use standalone commands instead of the unified up graph.');
+                assert.deepEqual([...workflow.matchAll(/^\s+- azd:\s*(.+)$/gm)].map((match) => match[1]),
+                    ['package --all', 'provision', 'deploy --all']);
+                assert.match(yaml, /^hooks:\n[\s\S]*?^    postdeploy:/m, 'Run setup after standalone deploy returns.');
+                assert.doesNotMatch(yaml, /^\s+postup:/m, 'Do not run setup twice during azd up.');
             });
         }
 
@@ -288,7 +303,7 @@ for (const [samplePath, expectedNames] of selected) {
         try {
             const functionsDir = path.join(appRoot, 'dist/functions');
             const polling = pollingSamples[appName];
-            if (polling && !isDataverse && appName !== 'azureblobApp') {
+            if (polling && !isDataverse && !independent) {
                 await t.test('polling samples are opt-in', async () => {
                     for (const value of [undefined, 'false', 'TRUE']) {
                         if (value === undefined) delete process.env.EnablePollingSamples;
@@ -298,12 +313,15 @@ for (const [samplePath, expectedNames] of selected) {
                     }
                 });
             }
-            if (isBlobPolling) {
-                await t.test('independent Blob polling registers without an enable flag', async () => {
-                    delete process.env.EnablePollingSamples;
-                    await import(`${pathToFileURL(path.join(functionsDir, polling.file)).href}?independent`);
-                    assert.deepEqual([...registrations.keys()], expectedNames);
-                    registrations.clear();
+            if (isIndependentPolling) {
+                await t.test('independent polling apps register without an enable flag', async () => {
+                    for (const value of [undefined, 'false', 'TRUE']) {
+                        if (value === undefined) delete process.env.EnablePollingSamples;
+                        else process.env.EnablePollingSamples = value;
+                        await import(`${pathToFileURL(path.join(functionsDir, polling.file)).href}?disabled=${value}`);
+                        assert.deepEqual([...registrations.keys()].sort(), [...expectedNames].sort());
+                        registrations.clear();
+                    }
                 });
             }
             if (isDataverse) {
@@ -374,13 +392,13 @@ for (const [samplePath, expectedNames] of selected) {
                     .filter((api) => !excludedApis.has(api))
                 : [];
             assert.deepEqual([...new Set(apiCalls.values())].sort(), expected.sort());
-            const nonHelperCount = (appName === 'onedriveApp' ? Object.keys(oneDriveContentOperations).length
+            const nonHelperCount = (appName === 'onedriveApp' && !isIndependentPolling ? Object.keys(oneDriveContentOperations).length
                 : appName === 'teamsApp' ? webhookTriggers.length : 0)
                 + expectedNames.filter((name) => rawPollingFunctions.has(name)).length;
             assert.equal(apiCalls.size, connector ? expectedNames.length - nonHelperCount : 0);
         });
 
-        if (['azureblobApp', 'onedriveApp'].includes(appName) && !isBlobPolling && process.platform !== 'win32') {
+        if (['azureblobApp', 'onedriveApp'].includes(appName) && !isIndependentPolling && process.platform !== 'win32') {
             await t.test('request builders use portable temporary files and stop if creation fails', async () => {
                 const hook = await readFile(path.join(appRoot, 'infra/scripts/postdeploy.sh'), 'utf8');
                 const builders = appName === 'azureblobApp'
@@ -435,7 +453,7 @@ tenantId=test`;
                 }
             });
         }
-        if (appName === 'azureblobApp' && !isBlobPolling && process.platform !== 'win32') {
+        if (appName === 'azureblobApp' && !isIndependentPolling && process.platform !== 'win32') {
             await t.test('Blob hook uses namespace MI and provisioned test storage', () => {
                 const values = {
                     resourceGroupName: 'test-rg', connectorNamespaceName: 'test-namespace',
@@ -526,7 +544,7 @@ source "$BLOB_TEST_HOOK"`;
                 }
             });
         }
-        if (appName === 'onedriveApp' && process.platform !== 'win32') {
+        if (appName === 'onedriveApp' && !isIndependentPolling && process.platform !== 'win32') {
             await t.test('folder picker rejects root and returns the selected connector folder ID', async () => {
                 const hook = await readFile(path.join(appRoot, 'infra/scripts/postdeploy.sh'), 'utf8');
                 const definition = hook.match(/^select_onedrive_folder\(\) \{[\s\S]*?^\}/m)?.[0];
@@ -563,7 +581,7 @@ select_from_list() {
                 }
             });
         }
-        if (appsWithHooks.has(appName)) {
+        if (appsWithHooks.has(appName) && !isIndependentPolling) {
             await t.test('both deployment hooks map functions to the SDK operation IDs', async (hookTest) => {
                 const { sdk } = connectorSamples[appName];
                 const sdkModule = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/generated', `${sdk}Extensions.js`)).href);
