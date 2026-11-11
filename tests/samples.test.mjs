@@ -16,7 +16,6 @@ const samples = {
     azureblobApp: ['OnAzureBlobUpdatedFile'],
     dataflowsApp: ['OnDataflowRefreshComplete'],
     genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericOffice365NewEmailPoll', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
-    kustoApp: ['OnKustoQueryResult'],
     office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewEmailPoll', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
     onedriveApp: ['OnOneDriveNewFile', 'OnOneDriveUpdatedFile', 'OnOneDriveNewFileContent', 'OnOneDriveUpdatedFileContent'],
     plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
@@ -44,7 +43,6 @@ const pollingSamples = {
 };
 const connectorSamples = {
     dataflowsApp: { namespace: 'dataflows', sdk: 'Dataflows' },
-    kustoApp: { namespace: 'kusto' },
     office365App: { namespace: 'office365', sdk: 'Office365' },
     onedriveApp: { namespace: 'onedriveforbusiness', sdk: 'Onedriveforbusiness' },
     plannerApp: { namespace: 'planner', sdk: 'Planner' },
@@ -61,7 +59,7 @@ const dependencies = {
 const appsWithHooks = new Set(['office365App', 'onedriveApp', 'sharepointApp', 'teamsApp']);
 const publishedApis = new Set();
 const coveredApis = new Set();
-const excludedApis = new Set(['sharepoint.onNewFile', 'sharepoint.onUpdatedFile', 'office365.onNewCalendarEvent']);
+const excludedApis = new Set(['sharepoint.onNewFile', 'sharepoint.onUpdatedFile', 'office365.onNewCalendarEvent', 'kusto.onQueryResult']);
 const oneDriveContentOperations = {
     OnOneDriveNewFileContent: 'OnNewFile',
     OnOneDriveUpdatedFileContent: 'OnUpdatedFile',
@@ -84,9 +82,6 @@ function itemFor(appName, name, index) {
     }
     if (appName === 'dataflowsApp') {
         return { dataflowId: marker, dataflowName: marker, status: 'Success', startTime: '2026-10-23T10:00:00Z', endTime: '2026-10-23T11:00:00Z' };
-    }
-    if (appName === 'kustoApp') {
-        return { Result: marker, Count: index };
     }
     if (appName === 'plannerApp') {
         return { id: marker, title: marker, planId: 'test-plan', percentComplete: /Complete/.test(name) ? 100 : 0, _assignments: [{ userId: marker }] };
@@ -116,7 +111,7 @@ function itemFor(appName, name, index) {
 }
 
 // Running from an app via npm test selects that app. Running from the repository
-// root exercises all eleven apps, each with its own installed dependencies.
+// root exercises all ten apps, each with its own installed dependencies.
 const cwd = path.resolve(process.cwd());
 const selected = Object.entries(samples).filter(([appName]) => cwd === path.resolve(root) || cwd === path.resolve(root, appName));
 assert.ok(selected.length, 'Run tests from the repository root or a sample app directory.');
@@ -693,9 +688,9 @@ az() {
 }
 
 if (cwd === path.resolve(root)) {
-    await test('all 40 non-deprecated, non-duplicate typed registrations are covered across the sample apps', () => {
+    await test('all 39 supported non-deprecated, non-duplicate typed trigger registrations are covered across the sample apps', () => {
         assert.equal(publishedApis.size, 43);
         assert.deepEqual([...coveredApis].sort(), [...publishedApis].filter((api) => !excludedApis.has(api)).sort());
-        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 57);
+        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 56);
     });
 }

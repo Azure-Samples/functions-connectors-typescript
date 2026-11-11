@@ -11,7 +11,6 @@ TypeScript samples for the [Azure Functions Connector Samples](https://github.co
 | [azureblobApp](azureblobApp/) | [Azure Blob Storage](https://learn.microsoft.com/connectors/azureblob/) | Blob added or modified, using the generic API |
 | [dataflowsApp](dataflowsApp/) | [Dataflows](https://learn.microsoft.com/connectors/dataflows/) | Refresh completed |
 | [genericApp](genericApp/) | Any connector | Generic `connectorTrigger<TItem>` examples with custom item types; opt-in single-event polling |
-| [kustoApp](kustoApp/) | [Azure Data Explorer](https://learn.microsoft.com/connectors/kusto/) | Typed query-result callback helper; no SDK trigger operation |
 | [office365App](office365App/) | [Office 365 Outlook](https://learn.microsoft.com/connectors/office365/) | New, flagged, mentioning-you, and shared mailbox emails; new, updated, changed, and upcoming calendar events; opt-in batched email polling |
 | [onedriveApp](onedriveApp/) | [OneDrive for Business](https://learn.microsoft.com/connectors/onedriveforbusiness/) | New and updated file content and metadata |
 | [plannerApp](plannerApp/) | [Planner](https://learn.microsoft.com/connectors/planner/) | New, completed, and assigned-to-me tasks |
@@ -20,9 +19,9 @@ TypeScript samples for the [Azure Functions Connector Samples](https://github.co
 | [teamsApp](teamsApp/) | [Microsoft Teams](https://learn.microsoft.com/connectors/teams/) | Channel/chat messages, mentions, reactions, keywords, recordings, transcripts, and team membership changes |
 | [vstsApp](vstsApp/) | [Azure DevOps](https://learn.microsoft.com/connectors/visualstudioteamservices/) | Builds, pull requests, pushes, TFVC check-ins, and work item changes |
 
-The eleven apps contain 55 webhook sample functions and two opt-in polling functions, covering **40 typed registrations in nine namespaces** exported by `@azure/functions-extensions-connectors@0.2.0-preview`, plus generic examples and two raw OneDrive content handlers. The samples omit two deprecated SharePoint file helpers and one duplicate Office 365 calendar alias from the 43 exported helpers. The typed count includes the Kusto query-result helper, which is not a remote trigger operation.
+The ten apps contain 54 webhook sample functions and two opt-in polling functions. The trigger samples cover **39 typed registrations in eight namespaces** exported by `@azure/functions-extensions-connectors@0.2.0-preview`, plus generic examples and two raw OneDrive content handlers. The samples omit two deprecated SharePoint file helpers, one duplicate Office 365 calendar alias, and the Kusto callback helper because Kusto has actions rather than connector triggers.
 
-Each folder has its own dependencies, `azure.yaml`, host configuration, and source code. The five original connector-specific apps configure connections and triggers through deployment hooks; additional Office 365 and SharePoint subscriptions require the optional settings documented in their READMEs. SharePoint requires its site URL before provisioning and enables five create/update subscriptions by default. Additional Teams webhook inputs are collected interactively after connector OAuth consent. `genericApp` and the five new apps use [manual connector setup](#manual-connector-setup). The new apps reuse [genericApp's deployment module](genericApp/infra/main.bicep), so keep the full repository checkout when deploying them.
+Each folder has its own dependencies, `azure.yaml`, host configuration, and source code. The five original connector-specific apps configure connections and triggers through deployment hooks; additional Office 365 and SharePoint subscriptions require the optional settings documented in their READMEs. SharePoint requires its site URL before provisioning and enables five create/update subscriptions by default. Additional Teams webhook inputs are collected interactively after connector OAuth consent. `genericApp` and the four new apps use [manual connector setup](#manual-connector-setup). The new apps reuse [genericApp's deployment module](genericApp/infra/main.bicep), so keep the full repository checkout when deploying them.
 
 Use test accounts: these examples log event metadata, including dynamic record fields. Review logging before using production data.
 
@@ -91,7 +90,7 @@ See the [Operations to Azure Functions Signature Mapping](https://github.com/Azu
 
 ## Manual connector setup
 
-Deployment of `genericApp`, Dataflows, Kusto, Planner, Salesforce, and Azure DevOps provisions a Function App, host storage, Application Insights, and Log Analytics. It does **not** create a Connector Namespace, connections, OAuth consent, or subscriptions.
+Deployment of `genericApp`, Dataflows, Planner, Salesforce, and Azure DevOps provisions a Function App, host storage, Application Insights, and Log Analytics. It does **not** create a Connector Namespace, connections, OAuth consent, or subscriptions.
 
 For Dataflows, Planner, Salesforce, and Azure DevOps:
 
@@ -146,11 +145,9 @@ For Dataflows, Planner, Salesforce, and Azure DevOps:
 
 7. Verify the connection is `Connected` and the trigger is `Enabled` in [Connector Namespaces](https://connectors.azure.com/). Generate a test event and inspect Function App logs.
 
-Kusto is different: this SDK exports no Kusto trigger-operation metadata. See [kustoApp](kustoApp/README.md) for the typed callback helper and the requirement for a separately configured query-result delivery workflow. Do not invent an `OnQueryResult` connector operation.
-
 ## Tests
 
-Run `npm ci` and `npm test` from a sample directory to build its TypeScript source and run the offline smoke tests. See [tests/README.md](tests/README.md) for all-eleven-app coverage and the offline deployment-configuration tests.
+Run `npm ci` and `npm test` from a sample directory to build its TypeScript source and run the offline smoke tests. See [tests/README.md](tests/README.md) for all-ten-app coverage and the offline deployment-configuration tests.
 
 ## Prerequisites
 
