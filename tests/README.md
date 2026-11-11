@@ -30,6 +30,7 @@ The suite checks:
 - All 57 expected sample functions register through the connector extension or raw host API when polling is enabled. Both polling files are also checked with the opt-in setting absent.
 - The samples actually call all 40 non-deprecated, non-duplicate public typed registration helpers, including the Kusto callback helper. The expected API list is discovered from the installed extension, excluding the two deprecated SharePoint file helpers and the duplicate Office 365 calendar alias, not inferred from handler names.
 - Both platform hooks for Office 365, OneDrive for Business, SharePoint, and Teams map registered function names to operation IDs from the installed SDK.
+- SharePoint consumes a provisioned site URL without prompting or Graph discovery. Mocked setup checks five default subscriptions, all opt-ins, list/library and folder targeting, existing-trigger updates, opt-in deselection, and failure reporting without calling Azure.
 - Both Office 365 hooks subscribe only one function to the new-calendar operation and omit the deprecated webhook email operation.
 - Both Teams hooks use the shared authenticated setup for seven additional operations from the installed SDK.
 - Twelve payload scenarios per normalized handler: object and JSON batches, object and JSON single items, empty batches, missing bodies, null payloads, malformed JSON, mixed polling envelope arrays as objects and JSON, a polling envelope containing multiple items, and an empty polling array.

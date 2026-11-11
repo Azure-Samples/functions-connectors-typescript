@@ -19,6 +19,30 @@
         },
         "useStorageManagedIdentity": {
             "value": true
+        },
+        "sharepointSiteUrl": {
+            "value": "${SHAREPOINT_SITE_URL}"
+        },
+        "sharepointLibraryName": {
+            "value": "${SHAREPOINT_LIBRARY_NAME=Documents}"
+        },
+        "sharepointListName": {
+            "value": "${SHAREPOINT_LIST_NAME=}"
+        },
+        "sharepointFolderPath": {
+            "value": "${SHAREPOINT_FOLDER_PATH=}"
+        },
+        "sharepointEnableDeletionTriggers": {
+            "value": "${SHAREPOINT_ENABLE_DELETION_TRIGGERS=false}"
+        },
+        "sharepointEnableSyntexTrigger": {
+            "value": "${SHAREPOINT_ENABLE_SYNTEX_TRIGGER=false}"
+        },
+        "sharepointFormId": {
+            "value": "${SHAREPOINT_FORM_ID=}"
+        },
+        "sharepointDigestSchedule": {
+            "value": "${SHAREPOINT_DIGEST_SCHEDULE=}"
         }
     }
 }

@@ -38,6 +38,8 @@ param assignStorageRoles bool = true
 @description('When true, the function app uses managed identity for AzureWebJobsStorage and the Flex Consumption package container (requires assignStorageRoles or pre-existing role grants). When false, falls back to a storage account key connection string (works without RBAC permissions but stores a secret in app settings).')
 param useStorageManagedIdentity bool = true
 
+param functionSettings object = {}
+
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var storageAccountName = take('st${replace(resourceToken, '-', '')}', 24)
 var planName = 'plan-${environmentName}-${resourceToken}'
@@ -186,7 +188,7 @@ var connectionStringStorageSettings = {
 resource functionAppSettings 'Microsoft.Web/sites/config@2024-04-01' = {
   parent: functionApp
   name: 'appsettings'
-  properties: union(baseAppSettings, useStorageManagedIdentity ? identityStorageSettings : connectionStringStorageSettings)
+  properties: union(baseAppSettings, useStorageManagedIdentity ? identityStorageSettings : connectionStringStorageSettings, functionSettings)
 }
 
 var storageBlobDataOwnerRoleId = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'

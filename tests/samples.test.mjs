@@ -457,7 +457,7 @@ select_from_list() {
             });
         }
         if (appsWithHooks.has(appName)) {
-            await t.test('both deployment hooks map functions to the SDK operation IDs', async () => {
+            await t.test('both deployment hooks map functions to the SDK operation IDs', async (hookTest) => {
                 const { sdk } = connectorSamples[appName];
                 const sdkModule = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/generated', `${sdk}Extensions.js`)).href);
                 const operations = sdkModule[`${sdk}TriggerOperations`];
@@ -477,36 +477,100 @@ select_from_list() {
                     const hook = await readFile(path.join(appRoot, 'infra/scripts', `postdeploy.${suffix}`), 'utf8');
                     if (appName === 'sharepointApp') {
                         assert.doesNotMatch(hook, /\bOnSharepoint(?:New|Updated)File\b|\bSHAREPOINT_FOLDER_ID\b/);
+                        assert.doesNotMatch(hook, /Read-Host|read -r sharepointSiteAddress|graph\.microsoft\.com/);
                         if (suffix === 'sh' && process.platform !== 'win32') {
                             const end = hook.indexOf('# --- Verify the connector-namespace');
-                            assert.ok(end > 0, 'Isolate site selection without executing connector setup.');
-                            for (const [input, savedSite] of [['https://example.sharepoint.com/sites/test\n', ''], ['', ''], ['', 'https://example.sharepoint.com/sites/saved']]) {
-                                const values = { resourceGroupName: 'test', connectorNamespaceName: 'test', sharepointConnectionName: 'test', functionAppName: 'test', SHAREPOINT_SITE_ADDRESS: savedSite };
+                            assert.ok(end > 0, 'Isolate required configuration checks without executing connector setup.');
+                            for (const savedSite of ['', 'https://example.sharepoint.com/sites/saved']) {
+                                const values = { resourceGroupName: 'test', connectorNamespaceName: 'test', sharepointConnectionName: 'test', functionAppName: 'test', sharepointSiteUrl: savedSite };
                                 const mocks = `
 azd() {
     if [[ "$1 $2" == "env get-values" ]]; then
         printf '%s\\n' '${JSON.stringify(values)}'
-    elif [[ "$1 $2 $3" == "env set SHAREPOINT_SITE_ADDRESS" && "$4" == "https://example.sharepoint.com/sites/test" ]]; then
-        echo 'TEST: site saved' >&2
     else
         return 91
     fi
 }
 az() {
-    if [[ "$1" != "rest" || -n '${savedSite}' ]]; then return 92; fi
-    echo 'AADSTS530084: Access blocked by conditional access token protection policy.' >&2
-    return 1
+    echo 'TEST: unexpected Azure call' >&2
+    return 92
 }`;
-                                const result = spawnSync('bash', ['-c', `${mocks}\n${hook.slice(0, end)}`], { input, encoding: 'utf8', timeout: 5000 });
+                                const result = spawnSync('bash', ['-c', `${mocks}\n${hook.slice(0, end)}`], { input: '', encoding: 'utf8', timeout: 5000 });
                                 assert.ifError(result.error);
-                                assert.equal(result.status, input || savedSite ? 0 : 1, result.stderr);
+                                assert.equal(result.status, savedSite ? 0 : 1, result.stderr);
+                                assert.doesNotMatch(result.stderr, /TEST: unexpected Azure call/, 'Site configuration must not call Azure CLI for Graph discovery.');
+                                assert.doesNotMatch(result.stdout + result.stderr, /SharePoint site URL \(e\.g\./);
                                 if (savedSite) {
-                                    assert.doesNotMatch(result.stdout + result.stderr, /Fetching SharePoint sites|SharePoint site URL/);
+                                    assert.doesNotMatch(result.stdout + result.stderr, /ERROR/);
                                 } else {
-                                    assert.match(result.stderr, /SharePoint site URL \(e\.g\./, 'The manual prompt must be visible even when stdin is piped.');
-                                    if (input) assert.match(result.stderr, /TEST: site saved/);
-                                    else assert.match(result.stderr, /ERROR: No site provided/);
+                                    assert.match(result.stderr, /SHAREPOINT_SITE_URL.*azd env set/);
                                 }
+                            }
+                            for (const all of [false, true]) {
+                                await hookTest.test(`SharePoint Bash setup: ${all ? 'all opt-ins' : 'defaults and deselection'}`, () => {
+                                    const values = {
+                                        resourceGroupName: 'test', connectorNamespaceName: 'test', sharepointConnectionName: 'sharepoint-test', functionAppName: 'test',
+                                        sharepointSiteUrl: 'https://example.sharepoint.com/sites/test',
+                                        sharepointLibraryName: all ? 'Archive' : 'Documents',
+                                        sharepointListName: all ? 'Tasks' : 'Documents',
+                                        sharepointFolderPath: all ? '/Shared Documents/Test' : '',
+                                        sharepointEnableDeletionTriggers: String(all), sharepointEnableSyntexTrigger: String(all),
+                                        sharepointFormId: all ? 'test-form' : '', sharepointDigestSchedule: all ? '*' : '',
+                                    };
+                                    const mocks = `
+azd() {
+    [[ "$1 $2" == "env get-values" ]] || return 91
+    printf '%s\\n' "$TEST_OUTPUTS"
+}
+az() {
+    case "$1 $2 $3" in
+        "extension show --name") echo connector-namespace ;;
+        "connector-namespace connection show")
+            if [[ "$*" != *"-o none"* ]]; then echo Connected; fi ;;
+        "functionapp keys list") echo offline-test-key ;;
+        "connector-namespace trigger list") printf '%s\\n' "$TEST_EXISTING" ;;
+        "connector-namespace trigger create"|"connector-namespace trigger update")
+            printf 'CAPTURE '
+            jq -cn --args '$ARGS.positional' -- "$@"
+            if [[ "$TEST_FAIL" == "true" && "$3" == "create" ]]; then return 37; fi ;;
+        *) echo "Unexpected Azure call: $1 $2 $3" >&2; return 92 ;;
+    esac
+}`;
+                                    const run = (fail) => spawnSync('bash', ['-c', `${mocks}\n${hook}`], {
+                                        input: '', encoding: 'utf8', timeout: 15000,
+                                        env: { ...process.env, TEST_OUTPUTS: JSON.stringify(values), TEST_EXISTING: JSON.stringify(['sharepoint-test-onsharepointnewitems', 'sharepoint-test-onsharepointdeleteditems']), TEST_FAIL: String(fail) },
+                                    });
+                                    const result = run(false);
+                                    assert.ifError(result.error);
+                                    assert.equal(result.status, 0, result.stderr);
+                                    const calls = result.stdout.split('\n').filter((line) => line.startsWith('CAPTURE ')).map((line) => JSON.parse(line.slice(8)));
+                                    const valueOf = (args, key) => args[args.indexOf(key) + 1];
+                                    const enabled = calls.filter((args) => valueOf(args, '--state') === 'Enabled');
+                                    const selectedNames = all ? expectedNames : expectedNames.filter((name) => !/Deleted|Classified|FromForm|Digest/.test(name));
+                                    assert.deepEqual(enabled.map((args) => valueOf(args, '-n')).sort(), selectedNames.map((name) => `sharepoint-test-${name.toLowerCase()}`).sort());
+                                    assert.equal(enabled.find((args) => valueOf(args, '-n') === 'sharepoint-test-onsharepointnewitems')[2], 'update');
+                                    const disabled = calls.filter((args) => valueOf(args, '--state') === 'Disabled');
+                                    assert.equal(disabled.length, all ? 0 : 1);
+                                    if (!all) assert.equal(valueOf(disabled[0], '-n'), 'sharepoint-test-onsharepointdeleteditems');
+                                    for (const args of enabled) {
+                                        const functionName = selectedNames.find((name) => `sharepoint-test-${name.toLowerCase()}` === valueOf(args, '-n'));
+                                        assert.equal(valueOf(args, '--operation-name'), operations[operationKeys.get(functionName)]);
+                                        const parameters = Object.fromEntries(JSON.parse(valueOf(args, '--parameters')).map(({ name, value }) => [name, value]));
+                                        const library = /File|Digest/.test(functionName);
+                                        assert.equal(parameters.dataset, values.sharepointSiteUrl);
+                                        assert.equal(parameters.table, library ? values.sharepointLibraryName : values.sharepointListName);
+                                        assert.equal(parameters.folderPath, all && library ? values.sharepointFolderPath : undefined);
+                                        if (/FromForm/.test(functionName)) assert.equal(parameters.form, 'test-form');
+                                        if (/Digest/.test(functionName)) assert.deepEqual([parameters.add, parameters.update, parameters.runSchedule], [true, true, '*']);
+                                    }
+                                    if (!all) {
+                                        const failed = run(true);
+                                        assert.ifError(failed.error);
+                                        assert.equal(failed.status, 1, failed.stderr);
+                                        assert.match(failed.stdout, /Some trigger configs failed/);
+                                        assert.doesNotMatch(failed.stdout, /Post-deployment configuration complete/);
+                                    }
+                                });
                             }
                         }
                     }
