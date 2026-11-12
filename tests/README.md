@@ -17,7 +17,7 @@ foreach ($app in $apps) {
         Pop-Location
     }
 }
-node --test .\tests\samples.test.mjs .\tests\blob-polling-setup.test.mjs .\tests\polling-setup.test.mjs .\tests\teams-setup.test.mjs .\tests\vsts-setup.test.mjs
+node --test .\tests\samples.test.mjs .\tests\blob-polling-setup.test.mjs .\tests\polling-setup.test.mjs .\tests\webhook-setup.test.mjs .\tests\teams-setup.test.mjs .\tests\vsts-setup.test.mjs
 ```
 
 On other platforms, install and build each app, then run the same Node test runner against [samples.test.mjs](samples.test.mjs) from the repository root.
@@ -29,7 +29,7 @@ The suite checks:
 - All azd project names use schema-compliant lowercase slugs, and deployment ignore files protect local settings, azd state, and Azurite data.
 - All 88 expected sample functions register through the connector extension or raw host API when all opt-ins are enabled. Independent Blob, Generic, Office 365, OneDrive, SharePoint, and Teams polling apps register without an enable flag.
 - Generic apps use existing resources without provisioning or deployment hooks. Generic webhook uses the generic helper with default Webhook delivery; Generic polling uses the raw host binding. Both only log receipt and return no payload.
-- Both Dataverse apps default to combined row changes only; action and separate-row flags are checked independently, including false and incorrectly cased values. Their templates use shared infrastructure, manual setup, ignored real local settings, and safe placeholder examples.
+- Both Dataverse apps register all five listeners without legacy opt-in flags. Tests verify independent infrastructure, mode-specific setup, ignored real local settings, safe templates, required-only portal selectors, callback ownership, saved subsets, source/configuration ownership, and explicit OAuth progress and confirmation. Live action-performed delivery still needs validation in a real Dataverse environment.
 - The trigger samples call all 39 supported non-deprecated, non-duplicate public typed registration helpers. The expected API list is discovered from the installed extension, excluding the two deprecated SharePoint file helpers, the duplicate Office 365 calendar alias, and the Kusto callback helper (Kusto exposes connector actions rather than triggers).
 - Both platform hooks for Office 365, OneDrive for Business, SharePoint, and Teams map registered function names to operation IDs from the installed SDK.
 - SharePoint consumes a provisioned site URL without prompting or Graph discovery. Mocked setup checks five default subscriptions, all opt-ins, list/library and folder targeting, existing-trigger updates, opt-in deselection, and failure reporting without calling Azure.

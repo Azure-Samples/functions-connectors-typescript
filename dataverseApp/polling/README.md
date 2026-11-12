@@ -9,68 +9,80 @@ one raw Poll event; its contents remain opaque.
 
 ## Configure
 
-1. Deploy this app using the [shared Dataverse instructions](../README.md#infrastructure-and-setup).
-2. Follow the [manual connector setup](../../README.md#manual-connector-setup)
-   to create a namespace and a `commondataservice` connection. Complete OAuth
-   consent using an account with permission to register Dataverse events.
-   Wait until the connection is `Connected`.
-3. Configure connection access policies for the namespace's system identity
-   and for the receiving Function App's system identity (Azure) or developer
-   identity (local). Azure RBAC alone does not grant connection access.
-4. Create an enabled **Poll** trigger configuration using the
-   [service configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery).
-   Do not include webhook `notificationDetails`. For the default combined event,
-   prepare this ARM request body outside the repository:
+Run from this folder, using a distinct environment for polling:
 
-   ```json
-   {
-     "properties": {
-       "connectionDetails": {
-         "connectorName": "commondataservice",
-         "connectionName": "<connection>"
-       },
-       "deliveryMode": "Poll",
-       "operationName": "SubscribeWebhookTrigger",
-       "parameters": [
-         { "name": "organization", "value": "https://contoso.crm.dynamics.com" },
-         { "name": "entityname", "value": "account" },
-         { "name": "message", "value": "7" },
-         { "name": "scope", "value": "4" }
-       ],
-       "metadata": {
-         "destinationType": "functionApp",
-         "functionAppSubscriptionId": "<subscription-id>",
-         "functionAppResourceGroup": "<resource-group>",
-         "functionAppName": "<function-app>",
-         "functionName": "OnDataverseRowChanged"
-       },
-       "state": "Enabled",
-       "type": "NotSpecified"
-     }
-   }
-   ```
+```sh
+npm ci
+az login
+az extension add --name connector-namespace
+azd auth login
+azd env new <unique-dataverse-polling-environment>
+azd up
+```
 
-   Replace all example values, then submit it with Azure CLI:
+Bicep provisions the Function App, storage, monitoring, Connector Namespace,
+`commondataservice` connection, and connection access policies for the namespace,
+Function App, and deployer identities. Packaging, provisioning, and deployment run
+sequentially so the deployment progress display finishes before interactive setup.
+The postdeploy hook uses `az connector-namespace connection authenticate` when the
+connection is not already `Connected`. In your normal browser, click **Continue**
+on the local sign-in page and complete consent; CLI instructions and errors remain
+visible in the terminal. The CLI handles callback capture and consent-code
+confirmation without replacing the provisioned access policies. This requires a
+`connector-namespace` extension version with `connection authenticate` support.
+The hook then verifies `Connected` and collects actual environment/table selectors
+through connector metadata and authenticated pickers.
 
-   ```powershell
-   $namespaceId = "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Web/connectorGateways/<namespace>"
-   az rest --method put --url "https://management.azure.com$namespaceId/triggerConfigs/dataverse-ondataverserowchanged?api-version=2026-05-01-preview" --body "@C:\private\poll-trigger.json"
-   ```
+During consent, the terminal checks Azure connection status every 10 seconds.
+A popup that stays open is not proof of failure: wait for **authentication
+confirmed: Azure connection is Connected**, then close the sign-in windows and
+continue in the terminal. Setup does not wait for a missing browser redirect once
+Azure confirms the connection.
 
-   For optional functions, use their actual operation and parameter values
-   from the [event table](../README.md), a distinct config name, and matching
-   `metadata.functionName`. Create only the sources you intend to enable.
-5. Copy [local.settings.example.json](local.settings.example.json) to
-   `local.settings.json`. Replace the endpoint using the
-   [shared endpoint guidance](../../README.md#polling-samples), and ensure each
-   enabled function's setting matches its actual trigger-config name.
-   Local development uses your `az login` identity; do not copy Azure managed
-   identity settings into the local file.
+If an earlier deployment stopped during consent or obscured a source-selection
+prompt, rerun `azd hooks run postdeploy` from this folder without redeploying.
+An already-connected connection is reused without another browser sign-in.
 
-For Azure, add the same endpoint, config-name settings, and selected opt-in flags
-to the Function App, plus `ConnectorNamespace__credential=managedidentity`.
-Restart after setting them. The Function App must have access to the connection.
-No user-assigned identity client ID is needed.
+Setup covers all five events by default: row added, row modified,
+row deleted, combined row changes, and action performed. The combined subscription
+uses `message=7` and `scope=4` in its body. Setup collects the actual environment,
+table, and action selectors needed for each event, then creates selected **Poll**
+trigger configurations, derives their endpoint from the service, and applies
+all config-name settings and managed-identity authentication settings to the
+Function App. No Dataverse opt-in flags are required. It never uses webhook
+`notificationDetails` or requests a Function system key.
+
+Only required fields and their selector dependencies are prompted, for example
+Environment, Table name, Scope for separate-row events, and Action name.
+The separate-row events use the portal's `SubscribeOn*Items` operations and
+`GetDataSets_V2` environment picker, not the admin-only `GetOn*Items_V2` operations.
+The connector metadata still marks the portal's separate-row operations deprecated.
+Optional filters use connector defaults
+or remain unset; previously saved explicit values are preserved. If a picker has
+no usable choices, enter the actual connector identifier manually (not a display
+name), or leave it blank to skip that trigger and continue with the others.
+Skipped listeners are disabled. If every trigger is skipped, setup stops without
+changing trigger configurations, app settings, or saved selections.
+
+A fresh `local.settings.json` is created with the endpoint and config names,
+without Azure managed-identity settings; an existing file is preserved.
+The [safe template](local.settings.example.json) remains available for local-only
+setup.
+
+Selections are saved as `POLLING_TRIGGER_INPUTS` in this project's azd
+environment. Unchanged reruns reuse existing subscriptions. To change source
+selectors, run `azd env set POLLING_TRIGGER_INPUTS=`, then
+`azd hooks run postdeploy`. When upgrading from combined-only setup, clear
+`POLLING_TRIGGER_INPUTS` and run `azd up` to deploy all five listeners and configure
+their sources. Saved subsets are reused, including intentionally skipped events;
+webhook and other apps' configs are never overwritten.
+
+Separate row events overlap the combined event, so the same row change can invoke
+both samples. Action-performed requires a real catalog, category, table, and
+action available to the signed-in user; do not guess missing identifiers.
+Picker entries without identifiers are ignored, and missing display labels use
+the identifier instead. A failed lookup or malformed list still stops setup
+before source changes; it is not treated as an empty list.
 
 ## Run and verify
 

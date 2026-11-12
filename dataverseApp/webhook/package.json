@@ -6,10 +6,11 @@
   "main": "dist/functions/*.js",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test ../../tests/samples.test.mjs",
+    "test": "npm run build && node --test ../../tests/samples.test.mjs ../../tests/webhook-setup.test.mjs",
     "watch": "tsc -w",
     "prestart": "npm run build",
-    "start": "func start"
+    "start": "func start",
+    "setup:local": "node infra/scripts/local-settings.mjs"
   },
   "engines": {
     "node": ">=24.0.0"

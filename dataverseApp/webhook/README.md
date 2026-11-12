@@ -7,33 +7,55 @@ Webhook delivery mode. They log only receipt and return the raw input unchanged.
 
 ## Configure
 
-1. Deploy this app using the [shared Dataverse instructions](../README.md#infrastructure-and-setup),
-   choosing a different azd environment from polling.
-2. Follow the [manual connector setup](../../README.md#manual-connector-setup)
-   using connector ID `commondataservice`. Complete OAuth consent and configure
-   connection access policies. Use an account with permission to register
-   organization-scoped Dataverse events.
-3. Select the operation and parameter values from the
-   [Dataverse event table](../README.md). For the default combined operation:
+Run from this folder using a different azd environment from polling:
 
-   ```json
-   [
-     { "name": "organization", "value": "https://contoso.crm.dynamics.com" },
-     { "name": "entityname", "value": "account" },
-     { "name": "message", "value": "7" },
-     { "name": "scope", "value": "4" }
-   ]
-   ```
+```sh
+npm ci
+az login
+az extension add --name connector-namespace
+azd auth login
+azd env new <unique-dataverse-webhook-environment>
+azd up
+```
 
-4. Create the subscription with operation `SubscribeWebhookTrigger` and a callback
-   ending in `/runtime/webhooks/connector?functionName=OnDataverseRowChanged`.
-   Keep the real `connector_extension` system key in
-   `notificationDetails.authentication`, never in the callback URL or a committed
-   file. Protect and remove the temporary JSON argument files described in the
-   shared setup guide.
-5. For optional functions, configure separate sources with their own operation,
-   selectors, and callback function name, then enable the appropriate
-   [Function App flag](../README.md#optional-events).
+Independent Bicep provisions the Function App, storage, monitoring, Connector
+Namespace, `commondataservice` connection, and namespace/Function App/deployer
+access policies. Packaging, provisioning, and deployment run sequentially before
+the interactive postdeploy hook. If needed, the hook runs
+`az connector-namespace connection authenticate`; complete browser consent and
+keep the terminal open. The CLI extension must support that command.
+Use an account permitted to register organization-scoped Dataverse events.
+
+During consent, the terminal checks Azure connection status every 10 seconds.
+A popup that stays open is not proof of failure: wait for **authentication
+confirmed: Azure connection is Connected**, then close the sign-in windows and
+continue in the terminal. Setup does not wait for a missing browser redirect once
+Azure confirms the connection. Retry interrupted setup with
+`azd hooks run postdeploy`, without redeploying.
+
+After verifying `Connected`, setup lets you configure or skip each of the five
+events. It prompts only for required selectors, for example Environment,
+Table name, and Action name; optional filters use defaults or remain unset.
+The separate-row events use the portal's `SubscribeOn*Items` operations and
+prompt for Environment, Table name, and Scope. Their environment picker uses
+`GetDataSets_V2`; these operations remain marked deprecated in connector metadata.
+The combined subscription uses numeric body values `message=7` and `scope=4`.
+If a picker has no usable choices, enter the actual connector identifier manually,
+or leave blank to skip the trigger. Failed or malformed lookups still stop setup.
+
+The hook retrieves the `connector_extension` system key securely and creates
+selected webhook sources with per-function callbacks. The key stays in
+`notificationDetails.authentication`, not in the callback URL or saved inputs.
+All five functions register without opt-in flags. The hook sets
+`AzureWebJobs.<FunctionName>.Disabled` to match the selection, keeping skipped
+listeners disabled.
+
+Selections are saved in `DATAVERSE_WEBHOOK_TRIGGER_INPUTS`. Unchanged reruns reuse
+subscriptions. To select again, run `azd env set DATAVERSE_WEBHOOK_TRIGGER_INPUTS=`,
+then `azd hooks run postdeploy`. Skipped owned sources and listeners are disabled
+without deleting subscriptions or changing selectors. Skipping all events stops
+before changes. Poll and other apps' configurations are never overwritten.
+A fresh `local.settings.json` is created; existing local settings are preserved.
 
 Keep the combined operation's logical table name, such as `account`, distinct
 from the separate row operations' entity-set name, such as `accounts`.

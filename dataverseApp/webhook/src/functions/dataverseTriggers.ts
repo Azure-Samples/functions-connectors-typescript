@@ -3,14 +3,10 @@
 
 import { app, InvocationContext } from '@azure/functions';
 
-const functionNames = ['OnDataverseRowChanged'];
-
-if (process.env.EnableDataverseSeparateRowSamples === 'true') {
-    functionNames.push('OnDataverseRowAdded', 'OnDataverseRowModified', 'OnDataverseRowDeleted');
-}
-if (process.env.EnableDataverseActionSample === 'true') {
-    functionNames.push('OnDataverseActionPerformed');
-}
+const functionNames = [
+    'OnDataverseRowChanged', 'OnDataverseActionPerformed',
+    'OnDataverseRowAdded', 'OnDataverseRowModified', 'OnDataverseRowDeleted',
+];
 
 for (const name of functionNames) {
     app.connectorTrigger(name, {

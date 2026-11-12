@@ -8,11 +8,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const apps = ['plannerApp', 'salesforceApp'];
+const apps = ['plannerApp', 'salesforceApp', 'dataverseApp'];
 const selected = apps.filter((app) => process.cwd() === path.resolve(root)
     || process.cwd() === path.join(root, app, 'webhook'));
 
 function fixture(config) {
+    const swagger = { paths: {}, parameters: {}, definitions: {} };
     const picker = (name, id, dependencies = {}, location = 'path') => ({
         name, in: location, type: 'string', required: true,
         'x-ms-dynamic-values': {
@@ -21,29 +22,86 @@ function fixture(config) {
             'value-collection': 'value', 'value-path': 'id', 'value-title': 'label',
         },
     });
-    const swagger = {
-        paths: {
-            '/{connectionId}/tables': { get: { operationId: 'Tables', parameters: [] } },
-            '/{connectionId}/picker/Groups': { get: { operationId: 'Groups', parameters: [] } },
-            '/{connectionId}/picker/Plans': { get: { operationId: 'Plans', parameters: [
-                { name: 'groupId', in: 'query', required: true, type: 'string' },
-            ] } },
-        },
-        parameters: {
-            group: picker('groupId', 'Groups', {}, 'query'),
-            plan: picker('id', 'Plans', { groupId: 'groupId' }),
-        },
+    const bodyField = (id, dependencies = {}) => {
+        const { name, in: location, required, ...field } = picker('unused', id, dependencies);
+        return field;
     };
+    const pickers = {
+        Groups: [], Plans: [{ name: 'groupId', in: 'query', required: true, type: 'string' }],
+        Tables: [], Organizations: [], Catalogs: [{ name: 'organization', in: 'header', required: true, type: 'string' }],
+        Categories: [{ name: 'organization', in: 'header', required: true, type: 'string' },
+            { name: 'catalog', in: 'header', required: true, type: 'string' }],
+        Entities: [{ name: 'organization', in: 'header', required: true, type: 'string' }],
+        Actions: [{ name: 'organization', in: 'header', required: true, type: 'string' },
+            { name: 'entity', in: 'query', required: true, type: 'string', 'x-ms-url-encoding': 'double' }],
+        GetDataSets_V2: [],
+        GetTables: [{ name: 'dataset', in: 'path', required: true, type: 'string' }],
+        GetScopeFilters: [{ name: 'dataset', in: 'path', required: true, type: 'string' },
+            { name: 'table', in: 'path', required: true, type: 'string' }],
+    };
+    for (const [id, parameters] of Object.entries(pickers)) {
+        const suffix = parameters.filter((p) => p.in === 'path').map((p) => `/{${p.name}}`).join('');
+        swagger.paths[`/{connectionId}/picker/${id}${suffix}`] = { get: { operationId: id, parameters } };
+    }
     for (const trigger of config.triggers) {
-        const parameters = config.connectorName === 'planner'
-            ? trigger.operationName === 'OnTaskAssignedToMe_V2' ? []
-                : [{ $ref: '#/parameters/group' }, { $ref: '#/parameters/plan' }]
-            : [{ ...picker('table', 'Tables'), 'x-ms-url-encoding': 'double' }];
+        let parameters;
+        if (config.connectorName === 'planner') {
+            swagger.parameters.group = picker('groupId', 'Groups', {}, 'query');
+            swagger.parameters.plan = picker('id', 'Plans', { groupId: 'groupId' });
+            parameters = trigger.operationName === 'OnTaskAssignedToMe_V2' ? []
+                : [{ $ref: '#/parameters/group' }, { $ref: '#/parameters/plan' }];
+        } else if (config.connectorName === 'salesforce') {
+            parameters = [{ ...picker('table', 'Tables'), 'x-ms-url-encoding': 'double' }];
+        } else if (['SubscribeWebhookTrigger', 'BusinessEventsTrigger'].includes(trigger.operationName)) {
+            const action = trigger.operationName === 'BusinessEventsTrigger';
+            const properties = {
+                entityname: bodyField('Entities', { organization: 'organization' }),
+                scope: { type: 'integer', ...(action ? { default: 4, 'x-ms-visibility': 'internal' } : {}) },
+                version: { type: 'integer', default: action ? 3 : 1, 'x-ms-visibility': 'internal' },
+                url: { type: 'string', 'x-ms-notification-url': true, 'x-ms-visibility': 'internal' },
+                filterexpression: bodyField('UnusedOptional'),
+                ...(action ? {
+                    sdkmessagename: bodyField('Actions', { organization: 'organization', entity: 'subscriptionRequest/entityname' }),
+                } : { message: { type: 'integer' } }),
+            };
+            swagger.definitions[trigger.operationName] = {
+                type: 'object', required: ['entityname', 'scope', 'version', 'url', action ? 'sdkmessagename' : 'message'], properties,
+            };
+            parameters = [
+                picker('organization', 'Organizations', {}, 'header'),
+                ...(action ? [
+                    picker('catalog', 'Catalogs', { organization: 'organization' }, 'header'),
+                    picker('category', 'Categories', { organization: 'organization', catalog: 'catalog' }, 'header'),
+                ] : []),
+                { name: 'subscriptionRequest', in: 'body', required: true, schema: { $ref: `#/definitions/${trigger.operationName}` } },
+            ];
+        } else {
+            const namedPicker = (name, id, dependencies = {}) => ({
+                ...picker(name, id, dependencies),
+                'x-ms-dynamic-values': {
+                    ...picker(name, id, dependencies)['x-ms-dynamic-values'],
+                    'value-path': 'Name', 'value-title': 'DisplayName',
+                },
+            });
+            parameters = [
+                namedPicker('dataset', 'GetDataSets_V2'),
+                namedPicker('table', 'GetTables', { dataset: 'dataset' }),
+                { name: 'scope', in: 'query', type: 'string', required: true,
+                    'x-ms-dynamic-values': { operationId: 'GetScopeFilters',
+                        parameters: { dataset: { parameter: 'dataset' }, table: { parameter: 'table' } } } },
+                { name: 'subscriptionRequest', in: 'body', required: true, schema: {
+                    type: 'object', required: ['NotificationUrl'], properties: {
+                        NotificationUrl: { type: 'string', 'x-ms-notification-url': true, 'x-ms-visibility': 'internal' },
+                        ...(trigger.operationName === 'SubscribeOnUpdatedItems' ? {
+                            AttributeFilters: { type: 'array', items: bodyField('UnusedOptional') },
+                        } : {}),
+                    },
+                } },
+            ];
+        }
         parameters.push({ name: 'optionalFilter', in: 'query', type: 'string',
             'x-ms-dynamic-values': { operationId: 'UnusedOptional' } });
-        swagger.paths[`/{connectionId}/trigger/${trigger.operationName}`] = { post: {
-            operationId: trigger.operationName, parameters,
-        } };
+        swagger.paths[`/{connectionId}/trigger/${trigger.operationName}`] = { post: { operationId: trigger.operationName, parameters } };
     }
     return swagger;
 }
@@ -112,7 +170,18 @@ function environment(config, operationRequest) {
                 assert.ok(connected, 'Authenticate before source selection.');
                 assert.ok(!JSON.stringify(body).includes('UnusedOptional'));
                 if (body.request.path.includes('/Plans')) assert.equal(body.request.queries.groupId, 'test-id');
-                return JSON.stringify({ response: { statusCode: env.pickerStatus, body: { value: env.pickerItems } } });
+                if (body.request.path.includes('/Actions')) {
+                    assert.equal(body.request.headers.organization, 'test-id');
+                    assert.equal(body.request.queries.entity, 'test-id');
+                }
+                if (body.request.path.includes('/GetScopeFilters')) {
+                    assert.ok(body.request.path.endsWith('/test-id/test-id'));
+                    return JSON.stringify({ response: { statusCode: env.pickerStatus,
+                        body: Array.isArray(env.pickerItems) ? env.pickerItems.map(() => 'Organization') : env.pickerItems } });
+                }
+                const items = Array.isArray(env.pickerItems)
+                    ? env.pickerItems.map((item) => ({ ...item, Name: item.id, DisplayName: item.label })) : env.pickerItems;
+                return JSON.stringify({ response: { statusCode: env.pickerStatus, body: { value: items } } });
             }
             if (url.pathname.includes('/connections/')) return JSON.stringify({ properties: { overallStatus: connected ? 'Connected' : 'NotConnected' } });
             if (url.pathname.endsWith('/triggerConfigs')) return JSON.stringify({ value: [...resources.values()] });
@@ -211,7 +280,13 @@ for (const app of selected) {
                 `https://func-test.azurewebsites.net/runtime/webhooks/connector?functionName=${definition.functionName}`);
             assert.equal(resource.properties.notificationDetails.authentication.value, env.key);
             assert.equal(env.settings[`AzureWebJobs.${definition.functionName}.Disabled`], 'false');
-
+            const body = resource.properties.parameters.find((p) => p.name === 'body')?.value;
+            if (definition.operationName === 'SubscribeWebhookTrigger') assert.deepEqual(body,
+                { message: 7, scope: 4, entityname: 'test-id', version: 1 });
+            if (['SubscribeOnNewItems', 'SubscribeOnUpdatedItems', 'SubscribeOnDeletedItems'].includes(definition.operationName)) {
+                assert.deepEqual(Object.fromEntries(resource.properties.parameters.map((p) => [p.name, p.value])),
+                    { dataset: 'test-id', table: 'test-id', scope: 'Organization', body: {} });
+            }
         }
         const saved = env.outputs[config.savedInputsSetting];
         assert.ok(!Buffer.from(saved, 'base64').toString('utf8').includes(env.key));
@@ -285,7 +360,7 @@ for (const app of selected) {
         for (const blank of [false, true]) {
             let prompts = 0;
             const triggers = await collectWebhookTriggers({
-                swagger: env.swagger, invoke: async () => ({ value: [] }),
+                swagger: env.swagger, invoke: async (id) => id === 'GetScopeFilters' ? [] : { value: [] },
                 choose: env.choose, log: () => {},
                 prompt: async (label, schema, options) => {
                     prompts++;

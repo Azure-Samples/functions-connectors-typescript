@@ -227,13 +227,13 @@ for (const [samplePath, expectedNames] of selected) {
             assert.equal(host.version, '2.0');
             assert.equal(host.extensionBundle.id, 'Microsoft.Azure.Functions.ExtensionBundle.Preview');
             if (!isGeneric) {
-                const runtimeApp = isDataverse || (connectorSamples[appName] && !appsWithHooks.has(appName) && !['vstsApp', 'plannerApp', 'salesforceApp'].includes(appName)) ? 'genericApp' : samplePath;
+                const runtimeApp = (connectorSamples[appName] && !appsWithHooks.has(appName) && !['vstsApp', 'plannerApp', 'salesforceApp'].includes(appName)) ? 'genericApp' : samplePath;
                 const infrastructure = await readFile(path.join(root, runtimeApp, 'infra/resources.bicep'), 'utf8');
                 assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
             }
         });
 
-        if (['vstsApp', 'plannerApp', 'salesforceApp'].includes(appName)) {
+        if (isDataverse || ['vstsApp', 'plannerApp', 'salesforceApp'].includes(appName)) {
             await t.test('local setup creates settings without overwriting an existing file', async () => {
                 const directory = await mkdtemp(path.join(tmpdir(), 'connector-local-settings-'));
                 try {
@@ -294,17 +294,17 @@ for (const [samplePath, expectedNames] of selected) {
         }
 
         if (isDataverse) {
-            await t.test('Dataverse uses shared infrastructure, manual setup, and safe local settings', async () => {
+            await t.test('Dataverse uses independent infrastructure, mode-specific setup, and safe local settings', async () => {
                 const infrastructure = await readFile(path.join(appRoot, 'infra/main.bicep'), 'utf8');
-                assert.match(infrastructure, /module app '\.\.\/\.\.\/\.\.\/genericApp\/infra\/main\.bicep'/);
+                assert.match(infrastructure, /module resources 'resources\.bicep'/);
                 const azureYaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
-                assert.doesNotMatch(azureYaml, /\bpostdeploy:|\bpostup:/);
+                assert.match(azureYaml, /\bpostdeploy:/);
                 const ignored = await readFile(path.join(appRoot, '.gitignore'), 'utf8');
                 assert.match(ignored, /^local\.settings\.json$/m);
                 const example = JSON.parse(await readFile(path.join(appRoot, 'local.settings.example.json'), 'utf8'));
                 assert.equal(example.Values.FUNCTIONS_WORKER_RUNTIME, 'node');
-                assert.equal(example.Values.EnableDataverseActionSample, 'false');
-                assert.equal(example.Values.EnableDataverseSeparateRowSamples, 'false');
+                assert.equal(example.Values.EnableDataverseActionSample, undefined);
+                assert.equal(example.Values.EnableDataverseSeparateRowSamples, undefined);
                 assert.equal(example.Values.ConnectorNamespace__credential, undefined, 'Local development uses the signed-in developer.');
                 if (appName === 'dataverseApp/polling') {
                     for (const name of dataverseFunctions) {
@@ -424,17 +424,14 @@ for (const [samplePath, expectedNames] of selected) {
                 });
             }
             if (isDataverse) {
-                await t.test('combined Dataverse rows are the default and optional events require explicit opt-in', async () => {
+                await t.test('all five Dataverse listeners register without legacy opt-in flags', async () => {
                     for (const [action, rows] of [[undefined, undefined], ['false', 'false'], ['TRUE', 'TRUE'], ['true', 'false'], ['false', 'true']]) {
                         for (const [flag, value] of [['EnableDataverseActionSample', action], ['EnableDataverseSeparateRowSamples', rows]]) {
                             if (value === undefined) delete process.env[flag];
                             else process.env[flag] = value;
                         }
                         await import(`${pathToFileURL(path.join(functionsDir, 'dataverseTriggers.js')).href}?action=${action}&rows=${rows}`);
-                        const expected = ['OnDataverseRowChanged'];
-                        if (action === 'true') expected.push('OnDataverseActionPerformed');
-                        if (rows === 'true') expected.push('OnDataverseRowAdded', 'OnDataverseRowModified', 'OnDataverseRowDeleted');
-                        assert.deepEqual([...registrations.keys()].sort(), expected.sort());
+                        assert.deepEqual([...registrations.keys()].sort(), [...dataverseFunctions].sort());
                         registrations.clear();
                     }
                 });
