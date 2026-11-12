@@ -34,7 +34,7 @@ const samples = {
         'OnOneDriveNewFilePoll', 'OnOneDriveUpdatedFilePoll', 'OnOneDriveNewFileContentPoll', 'OnOneDriveUpdatedFileContentPoll',
     ],
     plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
-    salesforceApp: ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
+    'salesforceApp/webhook': ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
     'sharepointApp/webhook': [
         'OnSharepointChangedItems', 'OnSharepointDeletedFileItems', 'OnSharepointDeletedItems',
         'OnSharepointNewFileItems', 'OnSharepointNewItems',
@@ -161,7 +161,7 @@ assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector exte
 
 for (const [samplePath, expectedNames] of selected) {
     await test(samplePath, async (t) => {
-        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|sharepointApp|teamsApp|vstsApp)\//.test(samplePath);
+        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|salesforceApp|sharepointApp|teamsApp|vstsApp)\//.test(samplePath);
         const appName = independent ? samplePath.split('/')[0] : samplePath;
         const isIndependentPolling = independent && samplePath.endsWith('/polling');
         const appRoot = path.join(root, samplePath);
@@ -227,13 +227,13 @@ for (const [samplePath, expectedNames] of selected) {
             assert.equal(host.version, '2.0');
             assert.equal(host.extensionBundle.id, 'Microsoft.Azure.Functions.ExtensionBundle.Preview');
             if (!isGeneric) {
-                const runtimeApp = isDataverse || (connectorSamples[appName] && !appsWithHooks.has(appName) && appName !== 'vstsApp') ? 'genericApp' : samplePath;
+                const runtimeApp = isDataverse || (connectorSamples[appName] && !appsWithHooks.has(appName) && !['vstsApp', 'salesforceApp'].includes(appName)) ? 'genericApp' : samplePath;
                 const infrastructure = await readFile(path.join(root, runtimeApp, 'infra/resources.bicep'), 'utf8');
                 assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
             }
         });
 
-        if (appName === 'vstsApp') {
+        if (['vstsApp', 'salesforceApp'].includes(appName)) {
             await t.test('local setup creates settings without overwriting an existing file', async () => {
                 const directory = await mkdtemp(path.join(tmpdir(), 'connector-local-settings-'));
                 try {
@@ -267,6 +267,9 @@ for (const [samplePath, expectedNames] of selected) {
                 assert.match(yaml, /^hooks:\n[\s\S]*?^    postdeploy:/m, 'Keep setup on the project command hook, after standalone deploy returns.');
                 assert.doesNotMatch(yaml, /^\s+postup:/m, 'Do not run setup twice during azd up.');
             });
+        }
+
+        if (appName === 'vstsApp') {
             await t.test('VSTS deploys its own namespace and policies and maps webhook setup to the SDK operations', async () => {
                 const { webhookTriggers: triggers } = await import('../vstsApp/webhook/infra/scripts/trigger-inputs.mjs');
                 const sdkModule = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/generated/VisualstudioteamservicesExtensions.js')));
