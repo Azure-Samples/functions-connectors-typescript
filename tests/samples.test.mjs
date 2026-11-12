@@ -33,7 +33,7 @@ const samples = {
     'onedriveApp/polling': [
         'OnOneDriveNewFilePoll', 'OnOneDriveUpdatedFilePoll', 'OnOneDriveNewFileContentPoll', 'OnOneDriveUpdatedFileContentPoll',
     ],
-    plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
+    'plannerApp/webhook': ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
     'salesforceApp/webhook': ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
     'sharepointApp/webhook': [
         'OnSharepointChangedItems', 'OnSharepointDeletedFileItems', 'OnSharepointDeletedItems',
@@ -161,7 +161,7 @@ assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector exte
 
 for (const [samplePath, expectedNames] of selected) {
     await test(samplePath, async (t) => {
-        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|salesforceApp|sharepointApp|teamsApp|vstsApp)\//.test(samplePath);
+        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|plannerApp|salesforceApp|sharepointApp|teamsApp|vstsApp)\//.test(samplePath);
         const appName = independent ? samplePath.split('/')[0] : samplePath;
         const isIndependentPolling = independent && samplePath.endsWith('/polling');
         const appRoot = path.join(root, samplePath);
@@ -227,13 +227,13 @@ for (const [samplePath, expectedNames] of selected) {
             assert.equal(host.version, '2.0');
             assert.equal(host.extensionBundle.id, 'Microsoft.Azure.Functions.ExtensionBundle.Preview');
             if (!isGeneric) {
-                const runtimeApp = isDataverse || (connectorSamples[appName] && !appsWithHooks.has(appName) && !['vstsApp', 'salesforceApp'].includes(appName)) ? 'genericApp' : samplePath;
+                const runtimeApp = isDataverse || (connectorSamples[appName] && !appsWithHooks.has(appName) && !['vstsApp', 'plannerApp', 'salesforceApp'].includes(appName)) ? 'genericApp' : samplePath;
                 const infrastructure = await readFile(path.join(root, runtimeApp, 'infra/resources.bicep'), 'utf8');
                 assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
             }
         });
 
-        if (['vstsApp', 'salesforceApp'].includes(appName)) {
+        if (['vstsApp', 'plannerApp', 'salesforceApp'].includes(appName)) {
             await t.test('local setup creates settings without overwriting an existing file', async () => {
                 const directory = await mkdtemp(path.join(tmpdir(), 'connector-local-settings-'));
                 try {

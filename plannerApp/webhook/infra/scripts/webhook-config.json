@@ -1,0 +1,20 @@
+{
+  "connectorName": "planner",
+  "displayName": "Planner",
+  "connectionSetting": "PlannerConnection",
+  "savedInputsSetting": "PLANNER_WEBHOOK_TRIGGER_INPUTS",
+  "triggers": [
+    {
+      "functionName": "OnPlannerCompleteTask",
+      "operationName": "OnCompleteTask_V3"
+    },
+    {
+      "functionName": "OnPlannerNewTask",
+      "operationName": "OnNewTask_V3"
+    },
+    {
+      "functionName": "OnPlannerTaskAssignedToMe",
+      "operationName": "OnTaskAssignedToMe_V2"
+    }
+  ]
+}

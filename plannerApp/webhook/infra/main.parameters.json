@@ -7,6 +7,12 @@
         },
         "location": {
             "value": "${AZURE_LOCATION}"
+        },
+        "connectorNamespaceLocation": {
+            "value": "${CONNECTOR_NAMESPACE_LOCATION=brazilsouth}"
+        },
+        "userPrincipalId": {
+            "value": "${AZURE_PRINCIPAL_ID}"
         }
     }
 }

@@ -8,25 +8,41 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const apps = ['salesforceApp'];
+const apps = ['plannerApp', 'salesforceApp'];
 const selected = apps.filter((app) => process.cwd() === path.resolve(root)
     || process.cwd() === path.join(root, app, 'webhook'));
 
 function fixture(config) {
-    const swagger = { paths: {
-        '/{connectionId}/tables': { get: { operationId: 'Tables', parameters: [] } },
-    } };
+    const picker = (name, id, dependencies = {}, location = 'path') => ({
+        name, in: location, type: 'string', required: true,
+        'x-ms-dynamic-values': {
+            operationId: id, parameters: Object.fromEntries(Object.entries(dependencies)
+                .map(([key, parameter]) => [key, { parameter }])),
+            'value-collection': 'value', 'value-path': 'id', 'value-title': 'label',
+        },
+    });
+    const swagger = {
+        paths: {
+            '/{connectionId}/tables': { get: { operationId: 'Tables', parameters: [] } },
+            '/{connectionId}/picker/Groups': { get: { operationId: 'Groups', parameters: [] } },
+            '/{connectionId}/picker/Plans': { get: { operationId: 'Plans', parameters: [
+                { name: 'groupId', in: 'query', required: true, type: 'string' },
+            ] } },
+        },
+        parameters: {
+            group: picker('groupId', 'Groups', {}, 'query'),
+            plan: picker('id', 'Plans', { groupId: 'groupId' }),
+        },
+    };
     for (const trigger of config.triggers) {
+        const parameters = config.connectorName === 'planner'
+            ? trigger.operationName === 'OnTaskAssignedToMe_V2' ? []
+                : [{ $ref: '#/parameters/group' }, { $ref: '#/parameters/plan' }]
+            : [{ ...picker('table', 'Tables'), 'x-ms-url-encoding': 'double' }];
+        parameters.push({ name: 'optionalFilter', in: 'query', type: 'string',
+            'x-ms-dynamic-values': { operationId: 'UnusedOptional' } });
         swagger.paths[`/{connectionId}/trigger/${trigger.operationName}`] = { post: {
-            operationId: trigger.operationName,
-            parameters: [
-                { name: 'table', in: 'path', type: 'string', required: true,
-                    'x-ms-url-encoding': 'double',
-                    'x-ms-dynamic-values': { operationId: 'Tables',
-                        'value-collection': 'value', 'value-path': 'id', 'value-title': 'label' } },
-                { name: 'optionalFilter', in: 'query', type: 'string',
-                    'x-ms-dynamic-values': { operationId: 'UnusedOptional' } },
-            ],
+            operationId: trigger.operationName, parameters,
         } };
     }
     return swagger;
@@ -95,6 +111,7 @@ function environment(config, operationRequest) {
             if (url.pathname.endsWith('/dynamicInvoke')) {
                 assert.ok(connected, 'Authenticate before source selection.');
                 assert.ok(!JSON.stringify(body).includes('UnusedOptional'));
+                if (body.request.path.includes('/Plans')) assert.equal(body.request.queries.groupId, 'test-id');
                 return JSON.stringify({ response: { statusCode: env.pickerStatus, body: { value: env.pickerItems } } });
             }
             if (url.pathname.includes('/connections/')) return JSON.stringify({ properties: { overallStatus: connected ? 'Connected' : 'NotConnected' } });
@@ -278,7 +295,7 @@ for (const app of selected) {
             });
             assert.ok(prompts > 0);
             if (blank) {
-                assert.equal(triggers.length, 0);
+                assert.ok(triggers.every((trigger) => trigger.operationName === 'OnTaskAssignedToMe_V2'));
             } else {
                 assert.equal(triggers.length, config.triggers.length);
                 validateWebhookTriggers(triggers, env.swagger);

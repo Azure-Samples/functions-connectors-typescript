@@ -5,7 +5,7 @@ Use Node.js 24+. Run `npm ci` followed by `npm test` from any sample app directo
 To install, build, and test all eighteen apps from the repository root in PowerShell:
 
 ```powershell
-$apps = 'azureblobApp\polling', 'azureblobApp\webhook', 'dataflowsApp', 'dataverseApp\polling', 'dataverseApp\webhook', 'genericApp\polling', 'genericApp\webhook', 'office365App\polling', 'office365App\webhook', 'onedriveApp\polling', 'onedriveApp\webhook', 'plannerApp', 'salesforceApp\webhook', 'sharepointApp\polling', 'sharepointApp\webhook', 'teamsApp\polling', 'teamsApp\webhook', 'vstsApp\webhook'
+$apps = 'azureblobApp\polling', 'azureblobApp\webhook', 'dataflowsApp', 'dataverseApp\polling', 'dataverseApp\webhook', 'genericApp\polling', 'genericApp\webhook', 'office365App\polling', 'office365App\webhook', 'onedriveApp\polling', 'onedriveApp\webhook', 'plannerApp\webhook', 'salesforceApp\webhook', 'sharepointApp\polling', 'sharepointApp\webhook', 'teamsApp\polling', 'teamsApp\webhook', 'vstsApp\webhook'
 foreach ($app in $apps) {
     Push-Location $app
     try {
@@ -77,4 +77,4 @@ npm test
 
 Use the actual tarball locations on your machine. Do not commit machine-specific tarball paths or substitute older releases.
 
-Salesforce webhook deployment tests in `webhook-setup.test.mjs` cover required-only object selection, OAuth status and redirect waits, callback-key handling, saved selections, ownership checks, safe reruns, and failure paths. Run them with `npm test` from `salesforceApp/webhook`.
+Planner and Salesforce webhook deployment tests in `webhook-setup.test.mjs` cover required-only source selection, OAuth status and redirect waits, callback-key handling, saved selections, ownership checks, safe reruns, and failure paths. Run them with `npm test` from `plannerApp/webhook` or `salesforceApp/webhook`.
