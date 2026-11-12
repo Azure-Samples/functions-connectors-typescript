@@ -1,0 +1,26 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
+    "OnNewChannelMessagePollTriggerConfigName": "teams-onnewchannelmessagepoll",
+    "OnNewChannelMessageMentioningMePollTriggerConfigName": "teams-onnewchannelmessagementioningmepoll",
+    "OnGroupMembershipAddPollTriggerConfigName": "teams-ongroupmembershipaddpoll",
+    "OnGroupMembershipRemovalPollTriggerConfigName": "teams-ongroupmembershipremovalpoll",
+    "OnWebhookAtMentionPollTriggerConfigName": "teams-onwebhookatmentionpoll",
+    "OnWebhookMessageReactionPollTriggerConfigName": "teams-onwebhookmessagereactionpoll",
+    "OnTranscriptAvailablePollTriggerConfigName": "teams-ontranscriptavailablepoll",
+    "OnRecordingAvailablePollTriggerConfigName": "teams-onrecordingavailablepoll",
+    "OnWebhookChatMessagePollTriggerConfigName": "teams-onwebhookchatmessagepoll",
+    "OnWebhookKeywordPollTriggerConfigName": "teams-onwebhookkeywordpoll",
+    "OnWebhookNewMessagePollTriggerConfigName": "teams-onwebhooknewmessagepoll",
+    "AzureWebJobs.OnWebhookAtMentionPoll.Disabled": "true",
+    "AzureWebJobs.OnWebhookMessageReactionPoll.Disabled": "true",
+    "AzureWebJobs.OnTranscriptAvailablePoll.Disabled": "true",
+    "AzureWebJobs.OnRecordingAvailablePoll.Disabled": "true",
+    "AzureWebJobs.OnWebhookChatMessagePoll.Disabled": "true",
+    "AzureWebJobs.OnWebhookKeywordPoll.Disabled": "true",
+    "AzureWebJobs.OnWebhookNewMessagePoll.Disabled": "true"
+  }
+}

@@ -8,26 +8,27 @@ TypeScript samples for the [Azure Functions Connector Samples](https://github.co
 
 | Folder | Connector | Triggers |
 | ------ | --------- | -------- |
-| [azureblobApp](azureblobApp/) | [Azure Blob Storage](https://learn.microsoft.com/connectors/azureblob/) | Blob added or modified, using the generic API |
-| [dataflowsApp](dataflowsApp/) | [Dataflows](https://learn.microsoft.com/connectors/dataflows/) | Refresh completed |
-| [genericApp](genericApp/) | Any connector | Generic `connectorTrigger<TItem>` examples with custom item types; opt-in single-event polling |
-| [office365App](office365App/) | [Office 365 Outlook](https://learn.microsoft.com/connectors/office365/) | New, flagged, mentioning-you, and shared mailbox emails; new, updated, changed, and upcoming calendar events; opt-in batched email polling |
-| [onedriveApp](onedriveApp/) | [OneDrive for Business](https://learn.microsoft.com/connectors/onedriveforbusiness/) | New and updated file content and metadata |
+| [azureblobApp](azureblobApp/) | [Azure Blob Storage](https://learn.microsoft.com/connectors/azureblob/) | Blob added or modified, using the generic API; separate polling/webhook apps |
+| [dataflowsApp](dataflowsApp/) | [Dataflows](https://learn.microsoft.com/connectors/dataflows/) | Refresh completed; standalone webhook app with automated setup |
+| [dataverseApp](dataverseApp/) | [Microsoft Dataverse](https://learn.microsoft.com/connectors/commondataservice/) | Separate polling/webhook apps covering all five events with automated source setup |
+| [genericApp](genericApp/) | Any connector | Separate connector-neutral webhook and polling apps; existing resources only |
+| [office365App](office365App/) | [Office 365 Outlook](https://learn.microsoft.com/connectors/office365/) | Separate [webhook](office365App/webhook/README.md) email/calendar and [polling](office365App/polling/README.md) batched email apps |
+| [onedriveApp](onedriveApp/) | [OneDrive for Business](https://learn.microsoft.com/connectors/onedriveforbusiness/) | New and updated file content and metadata; separate polling/webhook apps |
 | [plannerApp](plannerApp/) | [Planner](https://learn.microsoft.com/connectors/planner/) | New, completed, and assigned-to-me tasks |
 | [salesforceApp](salesforceApp/) | [Salesforce](https://learn.microsoft.com/connectors/salesforce/) | New and updated records |
-| [sharepointApp](sharepointApp/) | [SharePoint Online](https://learn.microsoft.com/connectors/sharepointonline/) | File metadata, file properties, list items, deletions, forms, classification changes, and recurring digests |
-| [teamsApp](teamsApp/) | [Microsoft Teams](https://learn.microsoft.com/connectors/teams/) | Channel/chat messages, mentions, reactions, keywords, recordings, transcripts, and team membership changes |
+| [sharepointApp](sharepointApp/) | [SharePoint Online](https://learn.microsoft.com/connectors/sharepointonline/) | Separate webhook/polling apps for file properties, list items, deletions, forms, classification changes, and recurring digests |
+| [teamsApp](teamsApp/) | [Microsoft Teams](https://learn.microsoft.com/connectors/teams/) | Separate webhook/polling apps for messages, mentions, reactions, keywords, recordings, transcripts, and membership |
 | [vstsApp](vstsApp/) | [Azure DevOps](https://learn.microsoft.com/connectors/visualstudioteamservices/) | Builds, pull requests, pushes, TFVC check-ins, and work item changes |
 
-The ten apps contain 54 webhook sample functions and two opt-in polling functions. The trigger samples cover **39 typed registrations in eight namespaces** exported by `@azure/functions-extensions-connectors@0.2.0-preview`, plus generic examples and two raw OneDrive content handlers. The samples omit two deprecated SharePoint file helpers, one duplicate Office 365 calendar alias, and the Kusto callback helper because Kusto has actions rather than connector triggers.
+The eighteen apps contain 55 webhook and 33 polling sample functions when all opt-ins are enabled. The trigger samples cover **39 typed registrations in eight namespaces** exported by `@azure/functions-extensions-connectors@0.2.0-preview`, plus generic and raw event examples. The samples omit two deprecated SharePoint file helpers, one duplicate Office 365 calendar alias, and the Kusto callback helper because Kusto has actions rather than connector triggers.
 
-Each folder has its own dependencies, `azure.yaml`, host configuration, and source code. The five original connector-specific apps configure connections and triggers through deployment hooks; additional Office 365 and SharePoint subscriptions require the optional settings documented in their READMEs. SharePoint requires its site URL before provisioning and enables five create/update subscriptions by default. Additional Teams webhook inputs are collected interactively after connector OAuth consent. `genericApp` and the four new apps use [manual connector setup](#manual-connector-setup). The new apps reuse [genericApp's deployment module](genericApp/infra/main.bicep), so keep the full repository checkout when deploying them.
+Each app has its own dependencies, host configuration, and source code. Connector-specific apps also include `azure.yaml`. The five original connector-specific apps configure webhook connections and triggers through deployment hooks; additional Office 365 and SharePoint subscriptions require the optional settings documented in their READMEs. Office 365 has independent [webhook](office365App/webhook/README.md) and [polling](office365App/polling/README.md) apps; run npm and azd commands from the chosen subfolder with a distinct environment. SharePoint also has independent webhook/polling apps; its webhook app requires the site URL before provisioning and enables five create/update subscriptions by default, while polling collects source selectors interactively. Additional Teams webhook inputs are collected interactively after connector OAuth consent. [Azure DevOps webhook deployment](vstsApp/webhook/README.md) provisions its own namespace, Entra ID OAuth connection, access policies, and selected triggers, with required-only authenticated source pickers. Planner and Salesforce have independent [Planner webhook](plannerApp/webhook/README.md) and [Salesforce webhook](salesforceApp/webhook/README.md) apps with their own infrastructure, OAuth consent, required-only source selection, webhook setup, and authentication progress feedback. Run npm and azd commands from the chosen subfolder. Dataverse has independent [webhook](dataverseApp/webhook/README.md) and [polling](dataverseApp/polling/README.md) apps with automated OAuth, required-only source selection, trigger configuration, and authentication progress feedback. Dataflows has a standalone [webhook app](dataflowsApp/webhook/README.md) with its own infrastructure, OAuth consent, required-only source selection, and webhook setup; run npm and azd commands from that subfolder. Generic's independent apps use existing resources and Functions Core Tools publishing, with no provisioning or deployment hooks. Blob, Office 365, OneDrive, SharePoint, Teams, and Dataverse configure Poll triggers automatically; other Poll configurations use manual setup.
 
 Use test accounts: these examples log event metadata, including dynamic record fields. Review logging before using production data.
 
 ## Package versions and API changes
 
-All apps use:
+Connector-specific apps use:
 
 ```json
 {
@@ -37,7 +38,7 @@ All apps use:
 }
 ```
 
-The connector extension requires **Node.js 24+**. Package engines, Node.js type definitions, and the deployment templates use Node.js 24.
+Generic webhook depends on Functions and the connector extension, using `connectorTrigger` without connector-specific models or an explicit type argument. Generic polling depends only on Functions and uses the raw host binding. All apps require **Node.js 24+**. Package engines, Node.js type definitions, and the deployment templates use Node.js 24.
 
 Functions `4.17.1` exports the `DeliveryMode` and `Cardinality` enums. Polling samples use `DeliveryMode.Poll`; the batched Outlook sample explicitly selects `Cardinality.Many`. Single-event examples omit cardinality and rely on its `Cardinality.One` default. Webhook examples also omit delivery mode, which defaults to `DeliveryMode.Webhook`.
 
@@ -61,19 +62,35 @@ Polling examples live in separate files; existing webhook handlers and deploymen
 
 | App | Sample | Invocation mode |
 | --- | ------ | --------------- |
-| [office365App](office365App/) | [OnNewEmailPoll](office365App/src/functions/onNewEmailPoll.ts) | Typed helper; up to four Poll events per invocation |
-| [genericApp](genericApp/) | [OnGenericOffice365NewEmailPoll](genericApp/src/functions/onGenericOffice365NewEmailPoll.ts) | Generic API; one Poll event per invocation, up to four concurrent calls |
+| [office365App/polling](office365App/polling/README.md) | [OnNewEmailPoll](office365App/polling/src/functions/onNewEmailPoll.ts) | Typed helper; up to four Poll events per invocation |
+| [genericApp/polling](genericApp/polling/) | [OnGenericConnectorEvent](genericApp/polling/src/functions/onGenericConnectorEvent.ts) | Raw generic API; one Poll event per invocation, using an existing configuration |
+| [azureblobApp/polling](azureblobApp/polling/README.md) | [Blob polling](azureblobApp/polling/src/functions/onAzureBlobPoll.ts) | One generic metadata handler |
+| [onedriveApp/polling](onedriveApp/polling/README.md) | [OneDrive polling](onedriveApp/polling/src/functions/onOneDrivePoll.ts) | Two typed metadata and two opaque-content handlers |
+| [sharepointApp/polling](sharepointApp/polling/README.md) | [SharePoint polling](sharepointApp/polling/src/functions/onSharepointPoll.ts) | All ten non-deprecated operations |
+| [teamsApp/polling](teamsApp/polling/README.md) | [Teams polling](teamsApp/polling/src/functions/onTeamsPoll.ts) | Four typed and seven raw event handlers |
+| [dataverseApp/polling](dataverseApp/polling/) | [Dataverse polling](dataverseApp/polling/src/functions/dataverseTriggers.ts) | All five raw events; automated source selection and Poll setup |
 
-Both use Office 365 Outlook's `OnNewEmailV3` operation. Choose one example per Poll Trigger Config; listeners using the same configuration compete for events. A Poll event can itself contain several emails, independently of invocation cardinality.
+Office 365 uses Outlook's `OnNewEmailV3` operation. Generic is connector-neutral and uses an existing supported Poll configuration, not an Office 365 example. Other connectors use the operations and source parameters in their app READMEs. Choose one receiving function per Poll Trigger Config; listeners sharing a configuration compete for events. A Poll event can itself contain several items, independently of invocation cardinality.
 
-1. Create an authorized connection and an enabled Trigger Config with service `deliveryMode: "Poll"`, **without** webhook `notificationDetails`. Follow the extension's [Poll configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery) for the ARM request and access policies. Authorize both the namespace identity that runs the connector trigger and the Function/developer identity that receives Poll events. Existing deployment hooks create webhook subscriptions only.
-2. Merge these entries into the chosen app's `local.settings.json` `Values` object:
+Blob uses an independent [Poll app](azureblobApp/polling/README.md) with automatic namespace, managed-identity connection, monitored storage/container, and Poll trigger setup during `azd up`. It does not require `EnablePollingSamples` or the manual setup below. Its [webhook app](azureblobApp/webhook/README.md) deploys separately.
+
+OneDrive also has independent [polling](onedriveApp/polling/README.md) and [webhook](onedriveApp/webhook/README.md) apps. Its polling `azd up` provisions the namespace/connection, guides OAuth consent and folder selection, and configures Poll triggers and app settings automatically. It does not require `EnablePollingSamples` or the manual setup below.
+
+Office 365's independent [polling app](office365App/polling/README.md) provisions its namespace, connection, and access policies, handles OAuth consent, and configures the `OnNewEmailV3` Inbox Poll source and managed-identity app settings automatically. It creates populated local settings only if no file exists; existing local settings are preserved. Neither Office app requires `EnablePollingSamples`.
+
+Teams also has independent [polling](teamsApp/polling/README.md) and [webhook](teamsApp/webhook/README.md) apps. Polling deployment handles OAuth, authenticated source selection, saved inputs, Poll triggers, and managed-identity app settings automatically. Four typed listeners are enabled by default; seven additional events are optional. No `EnablePollingSamples` flag is required. Its `azd up` runs package, provision, and deploy sequentially so the progress display ends before interactive setup begins.
+
+SharePoint also has independent [polling](sharepointApp/polling/README.md) and [webhook](sharepointApp/webhook/README.md) apps. Polling deployment provisions its namespace, connection, and policies, handles OAuth and authenticated source selection, and creates enabled Poll configurations and app settings automatically. Five create/update operations are enabled by default; deletion, forms, classification, and digests are opt-in. Saved selections are reused, and no `EnablePollingSamples` flag is required.
+
+Dataverse's [polling app](dataverseApp/polling/README.md) provisions its own namespace, connection, and policies, handles OAuth and authenticated source selection, and configures all five events without Dataverse opt-in flags. Blank manual picker input skips a trigger; skipped listeners are disabled. The [webhook app](dataverseApp/webhook/README.md) deploys separately and lets you configure or skip each event.
+
+1. For manual setup, create an authorized connection and an enabled Trigger Config with service `deliveryMode: "Poll"`, **without** webhook `notificationDetails`. Follow the extension's [Poll configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery) for the ARM request and access policies. Authorize both the namespace identity that runs the connector trigger and the Function/developer identity that receives Poll events.
+2. For Generic, follow its [polling guide](genericApp/polling/README.md) and merge these entries into `local.settings.json` `Values`:
 
    ```json
    {
-     "EnablePollingSamples": "true",
      "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
-     "OnNewEmailPollTriggerConfigName": "<poll-trigger-config-name>"
+     "GenericTriggerConfigName": "<existing-poll-trigger-config-name>"
    }
    ```
 
@@ -82,7 +99,11 @@ Both use Office 365 Outlook's `OnNewEmailV3` operation. Choose one example per P
 
 For Azure, add the same settings to the Function App and set `ConnectorNamespace__credential=managedidentity`; grant its managed identity access to the connection. Restart the host after changing settings.
 
-Polling samples do not register unless `EnablePollingSamples` is exactly `true`, so existing deployments do not require new connection settings. Batch handlers receive flattened, ordered `context.items` / `context.emails`; `context.rawPayload` retains the complete original envelope array and metadata. `maxConcurrentCalls` is used only by the single-event example, not the batched example.
+Blob, Generic, Office 365, OneDrive, SharePoint, Teams, and Dataverse have dedicated Poll apps; use their mode-specific setup and settings templates. Both Dataverse apps register all five listeners without opt-in flags; setup disables skipped listeners using `AzureWebJobs.<FunctionName>.Disabled`.
+
+Typed/generic helper handlers receive flattened, ordered items; `context.rawPayload` retains the complete parsed envelope array and metadata. Raw Dataverse, OneDrive content, and additional Teams Poll handlers bypass normalization and preserve the original input, including strings and binary payloads. Both Generic handlers only log receipt, without inspecting or returning payloads. The four newly added connector polling examples log receipt/count only, not event contents.
+
+For manual ARM request bodies and connection access policies, use the [Poll configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery); the [Dataverse Poll guide](dataverseApp/polling/README.md#configure) includes a complete example. Use the selected connector/operation/parameters for other apps. Poll configurations must not contain webhook `notificationDetails`. An Enabled config is not proof of successful source registration: inspect its latest source status, generate a test event, and check function logs. No public Function callback, connector extension key, or local tunnel is required.
 
 ## More triggers and operations
 
@@ -90,11 +111,11 @@ See the [Operations to Azure Functions Signature Mapping](https://github.com/Azu
 
 ## Manual connector setup
 
-Deployment of `genericApp`, Dataflows, Planner, Salesforce, and Azure DevOps provisions a Function App, host storage, Application Insights, and Log Analytics. It does **not** create a Connector Namespace, connections, OAuth consent, or subscriptions.
+All connector-specific apps provision their own infrastructure and automate connection/trigger setup. Run `azd up` from the chosen delivery-mode folder, with distinct azd environments. Generic's apps use existing resources without provisioning or deployment hooks; follow their [webhook](genericApp/webhook/README.md) or [polling](genericApp/polling/README.md) guide. The following steps describe manual configuration for existing resources.
 
-For Dataflows, Planner, Salesforce, and Azure DevOps:
+For manual webhook delivery (use the [Poll setup](#polling-samples) for polling):
 
-1. Deploy the chosen app, using its README and a unique azd environment.
+1. Deploy the chosen app using its README. Generic apps publish with Functions Core Tools to existing resources, without an azd environment.
 2. Create a namespace in a supported region and a connection using the connector ID in that app's README:
 
    ```sh
@@ -102,7 +123,7 @@ For Dataflows, Planner, Salesforce, and Azure DevOps:
    az connector-namespace connection create -g "<resource-group>" --namespace "<namespace>" -n "<connection>" --connector-name "<connector-id>"
    ```
 
-3. Configure the connector's authentication. For OAuth connections, follow the consent-link and status-polling examples in the [Teams deployment hook](teamsApp/infra/scripts/postdeploy.ps1). Do not create triggers until the connection is `Connected`. Configure connection access policies for the operator and any identity calling connector actions; the [namespace policy template](teamsApp/infra/connectorNamespace.bicep) shows the resource shape.
+3. Configure the connector's authentication. For OAuth connections, follow the consent-link and status-polling examples in the [Teams deployment hook](teamsApp/webhook/infra/scripts/postdeploy.ps1). Do not create triggers until the connection is `Connected`. Configure connection access policies for the operator and any identity calling connector actions; the [namespace policy template](teamsApp/webhook/infra/connectorNamespace.bicep) shows the resource shape.
 4. Select the operation and actual parameter values from the app's table and the SDK metadata. Retrieve the Function App's `connector_extension` system key with `az functionapp keys list`, without logging or committing it.
 5. Prepare the following JSON argument files **outside the repository**, protecting the notification file because it contains the real key. This example targets Planner's new-task sample:
 
@@ -147,7 +168,7 @@ For Dataflows, Planner, Salesforce, and Azure DevOps:
 
 ## Tests
 
-Run `npm ci` and `npm test` from a sample directory to build its TypeScript source and run the offline smoke tests. See [tests/README.md](tests/README.md) for all-ten-app coverage and the offline deployment-configuration tests.
+Run `npm ci` and `npm test` from a sample directory to build its TypeScript source and run the offline smoke tests. See [tests/README.md](tests/README.md) for all-twelve-app coverage and the offline deployment-configuration tests.
 
 ## Prerequisites
 

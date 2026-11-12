@@ -42,7 +42,7 @@ metadata.folderPaths = {
 console.log(JSON.stringify(metadata));
 '@
 
-Push-Location (Join-Path $root 'teamsApp')
+Push-Location (Join-Path $root 'teamsApp/webhook')
 try {
     $json = $metadataScript | node --input-type=module -
     Assert-Condition ($LASTEXITCODE -eq 0) 'Unable to load trigger metadata from the installed SDK.'
@@ -53,7 +53,8 @@ try {
 
 function Get-TriggerConfigurations {
     param([string] $App, [hashtable] $Values)
-    $ast = Read-ScriptAst (Join-Path $root "$App\infra\scripts\postdeploy.ps1")
+    $project = if ($App -in @('office365App', 'sharepointApp', 'teamsApp')) { "$App\webhook" } else { $App }
+    $ast = Read-ScriptAst (Join-Path $root "$project\infra\scripts\postdeploy.ps1")
     $variables = @('triggers', 'sharedMailboxAddress', 'sharepointListName', 'sharepointLibraryName', 'sharepointFolderPath', 'sharepointEnableDeletionTriggers', 'sharepointEnableSyntexTrigger', 'sharepointFormId', 'sharepointDigestSchedule', 'listParameters', 'libraryParameters')
     $statements = @($ast.EndBlock.Statements | Where-Object {
         ($_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and $_.Left.VariablePath.UserPath -in $variables) -or
@@ -149,7 +150,7 @@ foreach ($case in $cases) {
 }
 
 function Test-SharepointSiteEntry {
-    $hook = Get-Content -Raw (Join-Path $root 'sharepointApp\infra\scripts\postdeploy.ps1')
+    $hook = Get-Content -Raw (Join-Path $root 'sharepointApp\webhook\infra\scripts\postdeploy.ps1')
     $end = $hook.IndexOf('# --- Verify the connector-namespace')
     Assert-Condition ($end -gt 0) 'Isolate SharePoint configuration before connector setup.'
     function az { throw 'Site configuration must not call Azure CLI for Graph discovery.' }
@@ -217,7 +218,7 @@ function Test-SharepointTriggerSetup {
         }
     }
     function Read-Host { throw 'Post-deployment setup must not prompt for configuration.' }
-    & (Join-Path $root 'sharepointApp/infra/scripts/postdeploy.ps1') 6>$null
+    & (Join-Path $root 'sharepointApp/webhook/infra/scripts/postdeploy.ps1') 6>$null
     $enabled = @($state.calls | Where-Object status -EQ 'Enabled')
     $disabled = @($state.calls | Where-Object status -EQ 'Disabled')
     Assert-Condition ($enabled.Count -eq 5) 'PowerShell must configure five default subscriptions.'

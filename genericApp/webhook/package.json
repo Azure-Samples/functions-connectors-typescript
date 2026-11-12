@@ -1,0 +1,25 @@
+{
+  "name": "genericapp",
+  "version": "1.0.0",
+  "description": "Connector-neutral Azure Functions webhook sample using the generic connectorTrigger helper.",
+  "type": "module",
+  "main": "dist/functions/*.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test ../../tests/samples.test.mjs",
+    "watch": "tsc -w",
+    "prestart": "npm run build",
+    "start": "func start"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.17.1",
+    "@azure/functions-extensions-connectors": "0.2.0-preview"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.0.0"
+  }
+}

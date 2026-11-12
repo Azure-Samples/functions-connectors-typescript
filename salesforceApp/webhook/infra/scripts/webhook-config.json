@@ -1,0 +1,16 @@
+{
+  "connectorName": "salesforce",
+  "displayName": "Salesforce",
+  "connectionSetting": "SalesforceConnection",
+  "savedInputsSetting": "SALESFORCE_WEBHOOK_TRIGGER_INPUTS",
+  "triggers": [
+    {
+      "functionName": "OnSalesforceNewItems",
+      "operationName": "GetOnNewItems"
+    },
+    {
+      "functionName": "OnSalesforceUpdatedItems",
+      "operationName": "GetOnUpdatedItems"
+    }
+  ]
+}

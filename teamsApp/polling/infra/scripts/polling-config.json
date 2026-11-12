@@ -1,0 +1,56 @@
+{
+    "connectorName": "teams",
+    "triggers": [
+        {
+            "functionName": "OnNewChannelMessagePoll",
+            "operationName": "OnNewChannelMessage"
+        },
+        {
+            "functionName": "OnNewChannelMessageMentioningMePoll",
+            "operationName": "OnNewChannelMessageMentioningMe"
+        },
+        {
+            "functionName": "OnGroupMembershipAddPoll",
+            "operationName": "OnGroupMembershipAdd"
+        },
+        {
+            "functionName": "OnGroupMembershipRemovalPoll",
+            "operationName": "OnGroupMembershipRemoval"
+        },
+        {
+            "functionName": "OnWebhookAtMentionPoll",
+            "operationName": "WebhookAtMentionTrigger",
+            "optional": true
+        },
+        {
+            "functionName": "OnWebhookMessageReactionPoll",
+            "operationName": "WebhookMessageReactionTrigger",
+            "optional": true
+        },
+        {
+            "functionName": "OnTranscriptAvailablePoll",
+            "operationName": "TranscriptTrigger",
+            "optional": true
+        },
+        {
+            "functionName": "OnRecordingAvailablePoll",
+            "operationName": "RecordingTrigger",
+            "optional": true
+        },
+        {
+            "functionName": "OnWebhookChatMessagePoll",
+            "operationName": "WebhookChatMessageTrigger",
+            "optional": true
+        },
+        {
+            "functionName": "OnWebhookKeywordPoll",
+            "operationName": "WebhookKeywordTrigger",
+            "optional": true
+        },
+        {
+            "functionName": "OnWebhookNewMessagePoll",
+            "operationName": "WebhookNewMessageTrigger",
+            "optional": true
+        }
+    ]
+}

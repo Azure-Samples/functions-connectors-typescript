@@ -1,0 +1,13 @@
+{
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "FUNCTIONS_WORKER_RUNTIME": "node",
+        "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
+        "OnDataverseRowChangedTriggerConfigName": "dataverse-ondataverserowchanged",
+        "OnDataverseActionPerformedTriggerConfigName": "dataverse-ondataverseactionperformed",
+        "OnDataverseRowAddedTriggerConfigName": "dataverse-ondataverserowadded",
+        "OnDataverseRowModifiedTriggerConfigName": "dataverse-ondataverserowmodified",
+        "OnDataverseRowDeletedTriggerConfigName": "dataverse-ondataverserowdeleted"
+    }
+}

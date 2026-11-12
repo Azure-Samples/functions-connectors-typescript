@@ -1,0 +1,50 @@
+{
+    "connectorName": "sharepointonline",
+    "triggers": [
+        {
+            "functionName": "OnSharepointChangedItemsPoll",
+            "operationName": "GetOnChangedItems"
+        },
+        {
+            "functionName": "OnSharepointDeletedFileItemsPoll",
+            "operationName": "GetOnDeletedFileItems",
+            "optional": true
+        },
+        {
+            "functionName": "OnSharepointDeletedItemsPoll",
+            "operationName": "GetOnDeletedItems",
+            "optional": true
+        },
+        {
+            "functionName": "OnSharepointNewFileItemsPoll",
+            "operationName": "GetOnNewFileItems"
+        },
+        {
+            "functionName": "OnSharepointNewItemsPoll",
+            "operationName": "GetOnNewItems"
+        },
+        {
+            "functionName": "OnSharepointNewItemsFromFormPoll",
+            "operationName": "GetOnNewItemsFromForm",
+            "optional": true
+        },
+        {
+            "functionName": "OnSharepointRecurrenceDigestPoll",
+            "operationName": "GetOnRecurrenceDigest",
+            "optional": true
+        },
+        {
+            "functionName": "OnSharepointUpdatedFileClassifiedTimesPoll",
+            "operationName": "GetOnUpdatedFileClassifiedTimes",
+            "optional": true
+        },
+        {
+            "functionName": "OnSharepointUpdatedFileItemsPoll",
+            "operationName": "GetOnUpdatedFileItems"
+        },
+        {
+            "functionName": "OnSharepointUpdatedItemsPoll",
+            "operationName": "GetOnUpdatedItems"
+        }
+    ]
+}

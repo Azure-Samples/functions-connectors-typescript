@@ -1,0 +1,12 @@
+{
+  "connectorName": "dataflows",
+  "displayName": "Dataflows",
+  "connectionSetting": "DataflowsConnection",
+  "savedInputsSetting": "DATAFLOWS_WEBHOOK_TRIGGER_INPUTS",
+  "triggers": [
+    {
+      "functionName": "OnDataflowRefreshComplete",
+      "operationName": "OnRefreshComplete"
+    }
+  ]
+}

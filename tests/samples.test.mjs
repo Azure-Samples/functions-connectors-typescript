@@ -4,43 +4,85 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { constants } from 'node:fs';
-import { access, readdir, readFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { webhookTriggers } from '../teamsApp/infra/scripts/setup-webhook-triggers.mjs';
+import { webhookTriggers } from '../teamsApp/webhook/infra/scripts/setup-webhook-triggers.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const dataverseFunctions = [
+    'OnDataverseRowChanged', 'OnDataverseActionPerformed',
+    'OnDataverseRowAdded', 'OnDataverseRowModified', 'OnDataverseRowDeleted',
+];
 const samples = {
-    azureblobApp: ['OnAzureBlobUpdatedFile'],
-    dataflowsApp: ['OnDataflowRefreshComplete'],
-    genericApp: ['OnGenericAzureBlobUpdated', 'OnGenericCustomConnectorEvent', 'OnGenericOffice365NewEmail', 'OnGenericOffice365NewEmailPoll', 'OnGenericSharepointNewFile', 'OnGenericTeamsChannelMessage'],
-    office365App: ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewEmailPoll', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
-    onedriveApp: ['OnOneDriveNewFile', 'OnOneDriveUpdatedFile', 'OnOneDriveNewFileContent', 'OnOneDriveUpdatedFileContent'],
-    plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
-    salesforceApp: ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
-    sharepointApp: [
+    'azureblobApp/webhook': ['OnAzureBlobUpdatedFile'],
+    'azureblobApp/polling': ['OnAzureBlobUpdatedFilePoll'],
+    'dataflowsApp/webhook': ['OnDataflowRefreshComplete'],
+    'dataverseApp/polling': dataverseFunctions,
+    'dataverseApp/webhook': dataverseFunctions,
+    'genericApp/webhook': ['OnGenericConnectorEvent'],
+    'genericApp/polling': ['OnGenericConnectorEvent'],
+    'office365App/webhook': ['OnCalendarChangedItems', 'OnCalendarNewItems', 'OnCalendarUpdatedItems', 'OnFlaggedEmail', 'OnNewEmail', 'OnNewMentionMeEmail', 'OnSharedMailboxNewEmail', 'OnUpcomingEvent'],
+    'office365App/polling': ['OnNewEmailPoll'],
+    'onedriveApp/webhook': [
+        'OnOneDriveNewFile', 'OnOneDriveUpdatedFile', 'OnOneDriveNewFileContent', 'OnOneDriveUpdatedFileContent',
+    ],
+    'onedriveApp/polling': [
+        'OnOneDriveNewFilePoll', 'OnOneDriveUpdatedFilePoll', 'OnOneDriveNewFileContentPoll', 'OnOneDriveUpdatedFileContentPoll',
+    ],
+    'plannerApp/webhook': ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
+    'salesforceApp/webhook': ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
+    'sharepointApp/webhook': [
         'OnSharepointChangedItems', 'OnSharepointDeletedFileItems', 'OnSharepointDeletedItems',
         'OnSharepointNewFileItems', 'OnSharepointNewItems',
         'OnSharepointNewItemsFromForm', 'OnSharepointRecurrenceDigest',
         'OnSharepointUpdatedFileClassifiedTimes', 'OnSharepointUpdatedFileItems', 'OnSharepointUpdatedItems',
     ],
-    teamsApp: [
+    'sharepointApp/polling': [
+        'OnSharepointChangedItemsPoll', 'OnSharepointDeletedFileItemsPoll', 'OnSharepointDeletedItemsPoll',
+        'OnSharepointNewFileItemsPoll', 'OnSharepointNewItemsPoll', 'OnSharepointNewItemsFromFormPoll',
+        'OnSharepointRecurrenceDigestPoll', 'OnSharepointUpdatedFileClassifiedTimesPoll',
+        'OnSharepointUpdatedFileItemsPoll', 'OnSharepointUpdatedItemsPoll',
+    ],
+    'teamsApp/webhook': [
         'OnGroupMembershipAdd', 'OnGroupMembershipRemoval', 'OnNewChannelMessage', 'OnNewChannelMessageMentioningMe',
         'OnWebhookAtMention', 'OnWebhookMessageReaction', 'OnTranscriptAvailable', 'OnRecordingAvailable',
         'OnWebhookChatMessage', 'OnWebhookKeyword', 'OnWebhookNewMessage',
     ],
-    vstsApp: [
+    'teamsApp/polling': [
+        'OnGroupMembershipAddPoll', 'OnGroupMembershipRemovalPoll', 'OnNewChannelMessagePoll', 'OnNewChannelMessageMentioningMePoll',
+        'OnWebhookAtMentionPoll', 'OnWebhookMessageReactionPoll', 'OnTranscriptAvailablePoll', 'OnRecordingAvailablePoll',
+        'OnWebhookChatMessagePoll', 'OnWebhookKeywordPoll', 'OnWebhookNewMessagePoll',
+    ],
+    'vstsApp/webhook': [
         'OnVstsBuildCompleted', 'OnVstsGitPullClosed', 'OnVstsGitPullCreated', 'OnVstsGitPush',
         'OnVstsTfvcCheckIn', 'OnVstsWorkItemAssigned', 'OnVstsWorkItemClosed',
         'OnVstsWorkItemCreated', 'OnVstsWorkItemUpdated',
     ],
 };
 const pollingSamples = {
-    genericApp: { name: 'OnGenericOffice365NewEmailPoll', file: 'onGenericOffice365NewEmailPoll.js', maxBatchSize: 1, maxConcurrentCalls: 4 },
-    office365App: { name: 'OnNewEmailPoll', file: 'onNewEmailPoll.js', cardinality: 'many', maxBatchSize: 4 },
+    azureblobApp: { file: 'onAzureBlobPoll.js' },
+    'dataverseApp/polling': { file: 'dataverseTriggers.js' },
+    genericApp: {
+        file: 'onGenericConnectorEvent.js',
+        options: { triggerConfigName: '%GenericTriggerConfigName%' },
+    },
+    office365App: {
+        file: 'onNewEmailPoll.js',
+        options: { cardinality: 'many', maxBatchSize: 4, targetPendingEventThreshold: 16 },
+    },
+    onedriveApp: { file: 'onOneDrivePoll.js' },
+    sharepointApp: { file: 'onSharepointPoll.js' },
+    teamsApp: { file: 'onTeamsPoll.js' },
 };
+const rawPollingFunctions = new Set([
+    'OnOneDriveNewFileContentPoll', 'OnOneDriveUpdatedFileContentPoll',
+    'OnWebhookAtMentionPoll', 'OnWebhookMessageReactionPoll', 'OnTranscriptAvailablePoll', 'OnRecordingAvailablePoll',
+    'OnWebhookChatMessagePoll', 'OnWebhookKeywordPoll', 'OnWebhookNewMessagePoll',
+]);
 const connectorSamples = {
     dataflowsApp: { namespace: 'dataflows', sdk: 'Dataflows' },
     office365App: { namespace: 'office365', sdk: 'Office365' },
@@ -111,22 +153,32 @@ function itemFor(appName, name, index) {
 }
 
 // Running from an app via npm test selects that app. Running from the repository
-// root exercises all ten apps, each with its own installed dependencies.
+// root exercises all eighteen apps, each with its own installed dependencies.
 const cwd = path.resolve(process.cwd());
 const selected = Object.entries(samples).filter(([appName]) => cwd === path.resolve(root) || cwd === path.resolve(root, appName));
 assert.ok(selected.length, 'Run tests from the repository root or a sample app directory.');
 assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector extension requires Node.js 24+.');
 
-for (const [appName, expectedNames] of selected) {
-    await test(appName, async (t) => {
-        const appRoot = path.join(root, appName);
+for (const [samplePath, expectedNames] of selected) {
+    await test(samplePath, async (t) => {
+        const independent = /^(azureblobApp|dataflowsApp|genericApp|office365App|onedriveApp|plannerApp|salesforceApp|sharepointApp|teamsApp|vstsApp)\//.test(samplePath);
+        const appName = independent ? samplePath.split('/')[0] : samplePath;
+        const isIndependentPolling = independent && samplePath.endsWith('/polling');
+        const appRoot = path.join(root, samplePath);
         const require = createRequire(path.join(appRoot, 'package.json'));
+        const isDataverse = appName.startsWith('dataverseApp/');
+        const isGeneric = appName === 'genericApp';
 
         await t.test('manifests, lockfiles, and installed packages match the requested releases', async () => {
             const manifest = JSON.parse(await readFile(path.join(appRoot, 'package.json'), 'utf8'));
             const lock = JSON.parse(await readFile(path.join(appRoot, 'package-lock.json'), 'utf8'));
             assert.equal(manifest.engines.node, '>=24.0.0');
-            for (const [name, version] of Object.entries(dependencies)) {
+            const expectedDependencies = isGeneric ? {
+                '@azure/functions': dependencies['@azure/functions'],
+                ...(!isIndependentPolling ? { '@azure/functions-extensions-connectors': dependencies['@azure/functions-extensions-connectors'] } : {}),
+            } : dependencies;
+            if (isGeneric) assert.deepEqual(manifest.dependencies, expectedDependencies);
+            for (const [name, version] of Object.entries(expectedDependencies)) {
                 const installed = JSON.parse(await readFile(path.join(appRoot, 'node_modules', name, 'package.json'), 'utf8'));
                 assert.equal(manifest.dependencies[name], version);
                 assert.equal(lock.packages[''].dependencies[name], version);
@@ -140,20 +192,28 @@ for (const [appName, expectedNames] of selected) {
                     assert.equal(installed.version, version);
                 }
             }
-            const extensionRequire = createRequire(require.resolve('@azure/functions-extensions-connectors'));
-            assert.equal(extensionRequire.resolve('@azure/connectors'), require.resolve('@azure/connectors'), 'The extension and app must share the requested SDK.');
-            // Check both published runtime entry points, not just TypeScript types.
-            assert.equal(typeof require('@azure/connectors').ConnectorError, 'function');
-            const esm = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/azureConnectors/index.js')).href);
-            assert.equal(typeof esm.ConnectorError, 'function');
+            if (!isGeneric) {
+                const extensionRequire = createRequire(require.resolve('@azure/functions-extensions-connectors'));
+                assert.equal(extensionRequire.resolve('@azure/connectors'), require.resolve('@azure/connectors'), 'The extension and app must share the requested SDK.');
+                // Check both published runtime entry points, not just TypeScript types.
+                assert.equal(typeof require('@azure/connectors').ConnectorError, 'function');
+                const esm = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/azureConnectors/index.js')).href);
+                assert.equal(typeof esm.ConnectorError, 'function');
+            }
         });
 
         await t.test('host and deployment runtime configuration match the extension', async () => {
-            const azureYaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
-            const projectName = azureYaml.match(/^name:\s*(\S+)\s*$/m)?.[1];
-            assert.ok(projectName && projectName.length >= 2, 'The azd project must have a name.');
-            assert.match(projectName, /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/, 'The azd schema requires a lowercase project-name slug.');
-            if (appsWithHooks.has(appName) && process.platform !== 'win32') {
+            if (!isGeneric) {
+                const azureYaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                const projectName = azureYaml.match(/^name:\s*(\S+)\s*$/m)?.[1];
+                assert.ok(projectName && projectName.length >= 2, 'The azd project must have a name.');
+                assert.match(projectName, /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/, 'The azd schema requires a lowercase project-name slug.');
+            } else {
+                for (const file of ['azure.yaml', 'infra']) {
+                    await assert.rejects(access(path.join(appRoot, file)), { code: 'ENOENT' }, 'Generic apps use existing resources, not provisioning hooks.');
+                }
+            }
+            if (appsWithHooks.has(appName) && !isIndependentPolling && process.platform !== 'win32') {
                 await assert.doesNotReject(
                     access(path.join(appRoot, 'infra/scripts/postdeploy.sh'), constants.X_OK),
                     'The POSIX postdeploy hook must be executable because azd invokes it directly.',
@@ -166,16 +226,174 @@ for (const [appName, expectedNames] of selected) {
             const host = JSON.parse(await readFile(path.join(appRoot, 'host.json'), 'utf8'));
             assert.equal(host.version, '2.0');
             assert.equal(host.extensionBundle.id, 'Microsoft.Azure.Functions.ExtensionBundle.Preview');
-            const runtimeApp = connectorSamples[appName] && !appsWithHooks.has(appName) ? 'genericApp' : appName;
-            const infrastructure = await readFile(path.join(root, runtimeApp, 'infra/resources.bicep'), 'utf8');
-            assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
+            if (!isGeneric) {
+                const runtimeApp = (connectorSamples[appName] && !appsWithHooks.has(appName) && !['vstsApp', 'plannerApp', 'salesforceApp', 'dataflowsApp'].includes(appName)) ? 'genericApp' : samplePath;
+                const infrastructure = await readFile(path.join(root, runtimeApp, 'infra/resources.bicep'), 'utf8');
+                assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
+            }
         });
 
+        if (isDataverse || ['vstsApp', 'plannerApp', 'salesforceApp', 'dataflowsApp'].includes(appName)) {
+            await t.test('local setup creates settings without overwriting an existing file', async () => {
+                const directory = await mkdtemp(path.join(tmpdir(), 'connector-local-settings-'));
+                try {
+                    const scripts = path.join(directory, 'infra/scripts');
+                    await mkdir(scripts, { recursive: true });
+                    const script = path.join(scripts, 'local-settings.mjs');
+                    await copyFile(path.join(appRoot, 'infra/scripts/local-settings.mjs'), script);
+                    const example = await readFile(path.join(appRoot, 'local.settings.example.json'), 'utf8');
+                    await writeFile(path.join(directory, 'local.settings.example.json'), example);
+                    const run = () => {
+                        const result = spawnSync(process.execPath, [script], { cwd: directory, encoding: 'utf8', timeout: 5000 });
+                        assert.ifError(result.error);
+                        assert.equal(result.status, 0, result.stderr);
+                    };
+                    run();
+                    const local = path.join(directory, 'local.settings.json');
+                    assert.equal(await readFile(local, 'utf8'), example);
+                    await writeFile(local, 'existing user settings');
+                    run();
+                    assert.equal(await readFile(local, 'utf8'), 'existing user settings');
+                } finally {
+                    await rm(directory, { recursive: true, force: true });
+                }
+            });
+            await t.test('deployment finishes its progress display before interactive setup', async () => {
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                const workflow = yaml.match(/^workflows:\n([\s\S]*?)(?=^\S)/m)?.[1];
+                assert.ok(workflow, 'Use standalone commands instead of the unified up graph.');
+                assert.deepEqual([...workflow.matchAll(/^\s+- azd:\s*(.+)$/gm)].map((match) => match[1]),
+                    ['package --all', 'provision', 'deploy --all']);
+                assert.match(yaml, /^hooks:\n[\s\S]*?^    postdeploy:/m, 'Keep setup on the project command hook, after standalone deploy returns.');
+                assert.doesNotMatch(yaml, /^\s+postup:/m, 'Do not run setup twice during azd up.');
+            });
+        }
+
+        if (appName === 'vstsApp') {
+            await t.test('VSTS deploys its own namespace and policies and maps webhook setup to the SDK operations', async () => {
+                const { webhookTriggers: triggers } = await import('../vstsApp/webhook/infra/scripts/trigger-inputs.mjs');
+                const sdkModule = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/generated/VisualstudioteamservicesExtensions.js')));
+                assert.deepEqual(triggers.map((trigger) => trigger.functionName).sort(), [...expectedNames].sort());
+                for (const trigger of triggers) {
+                    assert.ok(Object.values(sdkModule.VisualstudioteamservicesTriggerOperations).includes(trigger.operationName));
+                }
+                const namespace = await readFile(path.join(appRoot, 'infra/connectorNamespace.bicep'), 'utf8');
+                assert.match(namespace, /connectorName: 'visualstudioteamservices'/);
+                assert.match(namespace, /parameterValueSet:\s*\{\s*name: 'EntraOAuth'/);
+                assert.match(namespace, /objectId: functionAppPrincipalId/);
+                assert.match(namespace, /objectId: userPrincipalId/);
+                const resources = await readFile(path.join(appRoot, 'infra/resources.bicep'), 'utf8');
+                assert.match(resources, /VstsConnection: connectorNamespace\.outputs\.vstsConnectionRuntimeUrl/);
+                assert.doesNotMatch(resources, /\bConnectorToken\b|\bConnectorRuntimeUrl\b/);
+                const entrypoint = await readFile(path.join(appRoot, 'infra/main.bicep'), 'utf8');
+                assert.doesNotMatch(entrypoint, /module\s+\w+\s+'\.\.\//, 'VSTS must not import another app\'s infrastructure.');
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                assert.equal((yaml.match(/run: node \.\/infra\/scripts\/postdeploy\.mjs/g) ?? []).length, 2);
+                assert.equal((yaml.match(/interactive: true/g) ?? []).length, 2);
+            });
+        }
+
+        if (appName === 'dataflowsApp') {
+            await t.test('standalone webhook setup maps registered functions to connector operations and access policies', async () => {
+                const config = JSON.parse(await readFile(path.join(appRoot, 'infra/scripts/webhook-config.json'), 'utf8'));
+                assert.deepEqual(config.triggers.map((trigger) => trigger.functionName).sort(), [...expectedNames].sort());
+                if (!isDataverse) {
+                    const generated = connectorSamples[appName].sdk;
+                    const sdk = require(`@azure/connectors/generated/${generated}Extensions`);
+                    assert.ok(Object.values(sdk).some((value) => value && typeof value === 'object'
+                        && config.triggers.every((trigger) => Object.values(value).includes(trigger.operationName))));
+                }
+                const resources = await readFile(path.join(appRoot, 'infra/resources.bicep'), 'utf8');
+                assert.ok(resources.includes(`connectorName: '${config.connectorName}'`));
+                assert.ok(resources.includes(`${config.connectionSetting}: connectorNamespace.outputs.connectionRuntimeUrl`));
+                const namespace = await readFile(path.join(appRoot, 'infra/connectorNamespace.bicep'), 'utf8');
+                for (const principal of ['namespace-msi', 'functionapp-msi', 'dev-user']) assert.ok(namespace.includes(principal));
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                assert.equal((yaml.match(/run: node \.\/infra\/scripts\/postdeploy\.mjs/g) ?? []).length, 2);
+                assert.equal((yaml.match(/interactive: true/g) ?? []).length, 2);
+            });
+        }
+
+        if (isDataverse) {
+            await t.test('Dataverse uses independent infrastructure, mode-specific setup, and safe local settings', async () => {
+                const infrastructure = await readFile(path.join(appRoot, 'infra/main.bicep'), 'utf8');
+                assert.match(infrastructure, /module resources 'resources\.bicep'/);
+                const azureYaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                assert.match(azureYaml, /\bpostdeploy:/);
+                const ignored = await readFile(path.join(appRoot, '.gitignore'), 'utf8');
+                assert.match(ignored, /^local\.settings\.json$/m);
+                const example = JSON.parse(await readFile(path.join(appRoot, 'local.settings.example.json'), 'utf8'));
+                assert.equal(example.Values.FUNCTIONS_WORKER_RUNTIME, 'node');
+                assert.equal(example.Values.EnableDataverseActionSample, undefined);
+                assert.equal(example.Values.EnableDataverseSeparateRowSamples, undefined);
+                assert.equal(example.Values.ConnectorNamespace__credential, undefined, 'Local development uses the signed-in developer.');
+                if (appName === 'dataverseApp/polling') {
+                    for (const name of dataverseFunctions) {
+                        assert.equal(example.Values[`${name}TriggerConfigName`], `dataverse-${name.toLowerCase()}`);
+                    }
+                    assert.equal(example.Values.ConnectorNamespace__pollingEndpoint, 'https://<connector-namespace-host>');
+                }
+            });
+        }
+
+        if (isIndependentPolling || (!independent && ['sharepointApp', 'teamsApp'].includes(appName))) {
+            await t.test('polling settings cover all listeners and keep optional sources disabled', async () => {
+                const settings = JSON.parse(await readFile(path.join(appRoot,
+                    isIndependentPolling ? 'local.settings.example.json' : 'docs/polling.settings.example.json'), 'utf8'));
+                const example = isIndependentPolling ? settings.Values : settings;
+                assert.equal(example.EnablePollingSamples, isIndependentPolling ? undefined : 'true');
+                assert.equal(example.ConnectorNamespace__pollingEndpoint, 'https://<connector-namespace-host>');
+                assert.equal(example.ConnectorNamespace__credential, undefined, 'Use the developer identity locally.');
+                const expected = isGeneric ? expectedNames : expectedNames.filter((name) => name.endsWith('Poll'));
+                const configured = Object.keys(example).filter((key) => key.endsWith('TriggerConfigName'));
+                assert.deepEqual(configured.sort(), expected.map((name) => isGeneric ? 'GenericTriggerConfigName' : `${name}TriggerConfigName`).sort());
+                for (const key of configured) {
+                    if (isGeneric) assert.equal(example[key], '<existing-poll-trigger-config-name>');
+                    else assert.match(example[key], /^[a-z0-9-]+$/, 'Use non-secret placeholder config names.');
+                }
+                const disabled = Object.keys(example).filter((key) => key.startsWith('AzureWebJobs.'));
+                const optional = appName === 'sharepointApp'
+                    ? ['OnSharepointDeletedFileItemsPoll', 'OnSharepointDeletedItemsPoll', 'OnSharepointNewItemsFromFormPoll', 'OnSharepointRecurrenceDigestPoll', 'OnSharepointUpdatedFileClassifiedTimesPoll']
+                    : appName === 'teamsApp' ? expected.filter((name) => rawPollingFunctions.has(name)) : [];
+                assert.deepEqual(disabled.sort(), optional.map((name) => `AzureWebJobs.${name}.Disabled`).sort());
+                for (const key of disabled) assert.equal(example[key], 'true');
+                const ignored = (await readFile(path.join(appRoot, '.funcignore'), 'utf8')).split(/\r?\n/);
+                assert.ok(ignored.includes(isIndependentPolling ? 'local.settings.example.json' : 'docs/'), 'Do not package the settings examples.');
+            });
+        }
+
+        if (['onedriveApp/polling', 'sharepointApp/polling', 'teamsApp/polling'].includes(samplePath)) {
+            await t.test('deployment finishes its progress display before interactive setup', async () => {
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                const workflow = yaml.match(/^workflows:\n([\s\S]*?)(?=^\S)/m)?.[1];
+                assert.ok(workflow, 'Use standalone commands instead of the unified up graph.');
+                assert.deepEqual([...workflow.matchAll(/^\s+- azd:\s*(.+)$/gm)].map((match) => match[1]),
+                    ['package --all', 'provision', 'deploy --all']);
+                assert.match(yaml, /^hooks:\n[\s\S]*?^    postdeploy:/m, 'Run setup after standalone deploy returns.');
+                assert.doesNotMatch(yaml, /^\s+postup:/m, 'Do not run setup twice during azd up.');
+            });
+        }
+
+        if (samplePath === 'sharepointApp/polling') {
+            await t.test('automatic Poll setup covers this project without webhook callbacks', async () => {
+                const config = JSON.parse(await readFile(path.join(appRoot, 'infra/scripts/polling-config.json'), 'utf8'));
+                assert.deepEqual(config.triggers.map((trigger) => trigger.functionName).sort(), [...expectedNames].sort());
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                assert.equal((yaml.match(/run: node \.\/infra\/scripts\/postdeploy\.mjs/g) ?? []).length, 2);
+                const sdk = require('@azure/connectors/generated/SharepointonlineExtensions');
+                assert.ok(Object.values(sdk).some((value) => value && typeof value === 'object'
+                    && config.triggers.every((trigger) => Object.values(value).includes(trigger.operationName))));
+            });
+        }
+
         const { app, trigger, DeliveryMode, Cardinality } = require('@azure/functions');
-        const extensionManifest = JSON.parse(await readFile(path.join(appRoot, 'node_modules/@azure/functions-extensions-connectors/package.json'), 'utf8'));
-        const extension = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/functions-extensions-connectors', extensionManifest.module)).href);
+        let extension;
+        if (!isGeneric || !isIndependentPolling) {
+            const extensionManifest = JSON.parse(await readFile(path.join(appRoot, 'node_modules/@azure/functions-extensions-connectors/package.json'), 'utf8'));
+            extension = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/functions-extensions-connectors', extensionManifest.module)).href);
+        }
         const original = app.connectorTrigger;
-        const originalNamespaces = new Map(Object.entries(extension.connectors));
+        const originalNamespaces = new Map(Object.entries(extension?.connectors ?? {}));
         const registrations = new Map();
         const apiCalls = new Map();
         // Observe which public helpers the samples actually call; the helpers
@@ -200,26 +418,55 @@ for (const [appName, expectedNames] of selected) {
             assert.ok(!registrations.has(name), `Duplicate function: ${name}`);
             registrations.set(name, options);
         };
-        const previousPollingEnabled = process.env.EnablePollingSamples;
+        const environmentFlags = ['EnablePollingSamples', 'EnableDataverseActionSample', 'EnableDataverseSeparateRowSamples'];
+        const previousFlags = Object.fromEntries(environmentFlags.map((name) => [name, process.env[name]]));
         try {
             const functionsDir = path.join(appRoot, 'dist/functions');
             const polling = pollingSamples[appName];
-            if (polling) {
+            if (polling && !isDataverse && !independent) {
                 await t.test('polling samples are opt-in', async () => {
-                    delete process.env.EnablePollingSamples;
-                    await import(`${pathToFileURL(path.join(functionsDir, polling.file)).href}?disabled`);
-                    assert.equal(registrations.size, 0, 'Unconfigured polling samples must not register listeners.');
+                    for (const value of [undefined, 'false', 'TRUE']) {
+                        if (value === undefined) delete process.env.EnablePollingSamples;
+                        else process.env.EnablePollingSamples = value;
+                        await import(`${pathToFileURL(path.join(functionsDir, polling.file)).href}?disabled=${value}`);
+                        assert.equal(registrations.size, 0, 'Only the exact true flag may register polling listeners.');
+                    }
+                });
+            }
+            if (isIndependentPolling) {
+                await t.test('independent polling apps register without an enable flag', async () => {
+                    for (const value of [undefined, 'false', 'TRUE']) {
+                        if (value === undefined) delete process.env.EnablePollingSamples;
+                        else process.env.EnablePollingSamples = value;
+                        await import(`${pathToFileURL(path.join(functionsDir, polling.file)).href}?disabled=${value}`);
+                        assert.deepEqual([...registrations.keys()].sort(), [...expectedNames].sort());
+                        registrations.clear();
+                    }
+                });
+            }
+            if (isDataverse) {
+                await t.test('all five Dataverse listeners register without legacy opt-in flags', async () => {
+                    for (const [action, rows] of [[undefined, undefined], ['false', 'false'], ['TRUE', 'TRUE'], ['true', 'false'], ['false', 'true']]) {
+                        for (const [flag, value] of [['EnableDataverseActionSample', action], ['EnableDataverseSeparateRowSamples', rows]]) {
+                            if (value === undefined) delete process.env[flag];
+                            else process.env[flag] = value;
+                        }
+                        await import(`${pathToFileURL(path.join(functionsDir, 'dataverseTriggers.js')).href}?action=${action}&rows=${rows}`);
+                        assert.deepEqual([...registrations.keys()].sort(), [...dataverseFunctions].sort());
+                        registrations.clear();
+                    }
                 });
             }
             process.env.EnablePollingSamples = 'true';
+            process.env.EnableDataverseActionSample = 'true';
+            process.env.EnableDataverseSeparateRowSamples = 'true';
             for (const file of (await readdir(functionsDir)).filter((file) => file.endsWith('.js')).sort()) {
                 await import(pathToFileURL(path.join(functionsDir, file)).href);
             }
         } finally {
-            if (previousPollingEnabled === undefined) {
-                delete process.env.EnablePollingSamples;
-            } else {
-                process.env.EnablePollingSamples = previousPollingEnabled;
+            for (const [flag, value] of Object.entries(previousFlags)) {
+                if (value === undefined) delete process.env[flag];
+                else process.env[flag] = value;
             }
             app.connectorTrigger = original;
             for (const [namespace, methods] of originalNamespaces) {
@@ -236,39 +483,39 @@ for (const [appName, expectedNames] of selected) {
             assert.deepEqual(Cardinality, { One: 'one', Many: 'many' });
             const polling = pollingSamples[appName];
             for (const [name, { handler, ...options }] of registrations) {
+                const isPolling = isIndependentPolling || appName === 'dataverseApp/polling' || name.endsWith('Poll');
                 const binding = trigger.connectorTrigger(options);
-                assert.equal(binding.deliveryMode, name === polling?.name ? DeliveryMode.Poll : DeliveryMode.Webhook);
+                assert.equal(binding.deliveryMode, isPolling ? DeliveryMode.Poll : DeliveryMode.Webhook);
                 assert.equal(binding.cardinality, options.cardinality ?? Cardinality.One);
-                if (name !== polling?.name) {
+                if (!isPolling) {
                     assert.equal(options.deliveryMode, undefined, `${name} must retain default Webhook delivery.`);
                     continue;
                 }
-                const { name: pollingName, file, ...batchOptions } = polling;
                 assert.deepEqual(options, {
                     deliveryMode: DeliveryMode.Poll,
                     connection: 'ConnectorNamespace',
-                    triggerConfigName: '%OnNewEmailPollTriggerConfigName%',
-                    ...batchOptions,
-                    targetPendingEventThreshold: 16,
+                    triggerConfigName: `%${name}TriggerConfigName%`,
+                    ...polling.options,
                 });
             }
         });
 
         await t.test('every public helper except deprecated operations and duplicate aliases is exercised', () => {
             const connector = connectorSamples[appName];
-            const expected = connector
+            const expected = isIndependentPolling && appName === 'office365App' ? ['office365.onNewEmail'] : connector
                 ? Object.entries(originalNamespaces.get(connector.namespace))
                     .filter(([, register]) => typeof register === 'function')
                     .map(([method]) => `${connector.namespace}.${method}`)
                     .filter((api) => !excludedApis.has(api))
                 : [];
             assert.deepEqual([...new Set(apiCalls.values())].sort(), expected.sort());
-            const nonHelperCount = appName === 'onedriveApp' ? Object.keys(oneDriveContentOperations).length
-                : appName === 'teamsApp' ? webhookTriggers.length : 0;
+            const nonHelperCount = (appName === 'onedriveApp' && !isIndependentPolling ? Object.keys(oneDriveContentOperations).length
+                : appName === 'teamsApp' && !isIndependentPolling ? webhookTriggers.length : 0)
+                + expectedNames.filter((name) => rawPollingFunctions.has(name)).length;
             assert.equal(apiCalls.size, connector ? expectedNames.length - nonHelperCount : 0);
         });
 
-        if (['azureblobApp', 'onedriveApp'].includes(appName) && process.platform !== 'win32') {
+        if (['azureblobApp', 'onedriveApp'].includes(appName) && !isIndependentPolling && process.platform !== 'win32') {
             await t.test('request builders use portable temporary files and stop if creation fails', async () => {
                 const hook = await readFile(path.join(appRoot, 'infra/scripts/postdeploy.sh'), 'utf8');
                 const builders = appName === 'azureblobApp'
@@ -323,7 +570,7 @@ tenantId=test`;
                 }
             });
         }
-        if (appName === 'azureblobApp' && process.platform !== 'win32') {
+        if (appName === 'azureblobApp' && !isIndependentPolling && process.platform !== 'win32') {
             await t.test('Blob hook uses namespace MI and provisioned test storage', () => {
                 const values = {
                     resourceGroupName: 'test-rg', connectorNamespaceName: 'test-namespace',
@@ -414,7 +661,7 @@ source "$BLOB_TEST_HOOK"`;
                 }
             });
         }
-        if (appName === 'onedriveApp' && process.platform !== 'win32') {
+        if (appName === 'onedriveApp' && !isIndependentPolling && process.platform !== 'win32') {
             await t.test('folder picker rejects root and returns the selected connector folder ID', async () => {
                 const hook = await readFile(path.join(appRoot, 'infra/scripts/postdeploy.sh'), 'utf8');
                 const definition = hook.match(/^select_onedrive_folder\(\) \{[\s\S]*?^\}/m)?.[0];
@@ -451,7 +698,7 @@ select_from_list() {
                 }
             });
         }
-        if (appsWithHooks.has(appName)) {
+        if (appsWithHooks.has(appName) && !isIndependentPolling) {
             await t.test('both deployment hooks map functions to the SDK operation IDs', async (hookTest) => {
                 const { sdk } = connectorSamples[appName];
                 const sdkModule = await import(pathToFileURL(path.join(appRoot, 'node_modules/@azure/connectors/dist/esm/generated', `${sdk}Extensions.js`)).href);
@@ -466,6 +713,9 @@ select_from_list() {
                     for (const trigger of webhookTriggers) {
                         operationKeys.set(trigger.functionName, Object.keys(operations).find((key) => operations[key] === trigger.operationName));
                     }
+                }
+                for (const name of expectedNames.filter((name) => rawPollingFunctions.has(name))) {
+                    operationKeys.set(name, operationKeys.get(name.slice(0, -'Poll'.length)));
                 }
                 assert.equal(operationKeys.size, expectedNames.length, 'Every registered function must have an SDK operation mapping.');
                 for (const suffix of ['ps1', 'sh']) {
@@ -574,12 +824,12 @@ az() {
                         assert.equal(hook.match(/\bCalendarGetOnNewItemsV3\b/g)?.length, 1, 'Create only one new-calendar subscription.');
                     }
                     for (const [name, key] of operationKeys) {
+                        const operation = operations[key];
+                        assert.equal(typeof operation, 'string', `Missing SDK operation for ${name}.`);
                         if (registrations.get(name).deliveryMode === 'Poll') {
                             assert.ok(!hook.includes(name), 'Webhook deployment hooks must not provision polling samples.');
                             continue;
                         }
-                        const operation = operations[key];
-                        assert.equal(typeof operation, 'string', `Missing SDK operation for ${name}.`);
                         const matches = appName === 'teamsApp' && webhookTriggers.some((trigger) => trigger.functionName === name)
                             ? hook.includes('setup-webhook-triggers.mjs')
                             : suffix === 'ps1'
@@ -599,7 +849,7 @@ az() {
         }
 
         for (const [name, { handler }] of registrations) {
-            if (appName === 'onedriveApp' && Object.hasOwn(oneDriveContentOperations, name)) {
+            if ((isGeneric && isIndependentPolling) || isDataverse || rawPollingFunctions.has(name) || (appName === 'onedriveApp' && Object.hasOwn(oneDriveContentOperations, name))) {
                 const binaryEnvelope = { body: { '$content-type': 'application/octet-stream', '$content': 'AP8B' }, headers: { 'x-test': 'preserved' } };
                 const contentCases = [
                     ['binary content', Buffer.from([0, 255, 1])],
@@ -610,16 +860,24 @@ az() {
                     ['JSON file content', '{"value":"private-file-content"}'],
                     ['empty content', { body: '' }],
                     ['null payload', null],
+                    ['undefined payload', undefined],
+                    ['malformed JSON', '{private-content'],
+                    ['dynamic record', { arbitraryField: 'private-record-content' }],
+                    ['polling envelopes', [binaryEnvelope, { body: 'private-content', sequenceNumber: 2 }]],
+                    ['polling envelopes JSON', JSON.stringify([binaryEnvelope, { body: 'private-content', sequenceNumber: 2 }])],
                 ];
                 for (const [label, input] of contentCases) {
                     await t.test(`${name}: ${label}`, async () => {
                         const logs = [];
                         const result = await handler(input, {
                             log: (...args) => logs.push(args.join(' ')),
-                            warn: () => assert.fail('Opaque content must not be parsed as a metadata payload.'),
+                            warn: () => assert.fail('Opaque events must not be parsed as metadata payloads.'),
                         });
-                        assert.strictEqual(result, input, 'Content and its envelope must be preserved unchanged.');
-                        assert.deepEqual(logs, [`${name} content trigger received.`], 'Do not log file contents.');
+                        if (isGeneric) assert.equal(result, undefined, 'Generic handlers acknowledge receipt without inspecting or returning payloads.');
+                        else assert.strictEqual(result, input, 'The raw event and its envelope must be preserved unchanged.');
+                        const receipt = isGeneric ? `${name} (generic API) trigger received.`
+                            : Object.hasOwn(oneDriveContentOperations, name) ? `${name} content trigger received.` : `${name} trigger received.`;
+                        assert.deepEqual(logs, [receipt], 'Do not log event contents.');
                     });
                 }
                 continue;
@@ -662,20 +920,27 @@ az() {
                         log: (...args) => logs.push(args.join(' ')),
                         warn: (...args) => warnings.push(args.join(' ')),
                     });
-                    assert.deepEqual(result, expected, 'The original payload must be returned unchanged.');
-                    if (input && typeof input === 'object') {
+                    if (isGeneric) assert.equal(result, undefined, 'Generic handlers acknowledge receipt without returning payloads.');
+                    else assert.deepEqual(result, expected, 'The original payload must be returned unchanged.');
+                    if (!isGeneric && input && typeof input === 'object') {
                         assert.strictEqual(result, input);
                     }
 
                     assert.ok(logs.some((line) => line.includes(`${name} `)), 'The sample handler must run.');
-                    for (let index = 1; index <= count; index++) {
-                        assert.ok(logs.some((line) => line.includes(`sample-item-${index}`)), `Item ${index} must reach the handler.`);
-                    }
-                    if (label.startsWith('poll ') && count === 2) {
-                        assert.ok(
-                            logs.findIndex((line) => line.includes('sample-item-1')) < logs.findIndex((line) => line.includes('sample-item-2')),
-                            'Polling must preserve envelope and item order.',
-                        );
+                    if (isGeneric) {
+                        assert.deepEqual(logs, [`${name} trigger received.`], 'Do not log event contents.');
+                    } else if (name.endsWith('Poll') && appName !== 'office365App') {
+                        assert.deepEqual(logs, [`${name} trigger received.`, `Received '${count}' item(s) in the polling event.`]);
+                    } else {
+                        for (let index = 1; index <= count; index++) {
+                            assert.ok(logs.some((line) => line.includes(`sample-item-${index}`)), `Item ${index} must reach the handler.`);
+                        }
+                        if (label.startsWith('poll ') && count === 2) {
+                            assert.ok(
+                                logs.findIndex((line) => line.includes('sample-item-1')) < logs.findIndex((line) => line.includes('sample-item-2')),
+                                'Polling must preserve envelope and item order.',
+                            );
+                        }
                     }
                     if (name === 'OnCalendarChangedItems' && count > 0) {
                         assert.ok(logs.some((line) => line.includes("Action: 'updated'")), 'Calendar changes must use the SDK ActionType field.');
@@ -691,6 +956,6 @@ if (cwd === path.resolve(root)) {
     await test('all 39 supported non-deprecated, non-duplicate typed trigger registrations are covered across the sample apps', () => {
         assert.equal(publishedApis.size, 43);
         assert.deepEqual([...coveredApis].sort(), [...publishedApis].filter((api) => !excludedApis.has(api)).sort());
-        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 56);
+        assert.equal(Object.values(samples).reduce((count, names) => count + names.length, 0), 88);
     });
 }
