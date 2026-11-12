@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const apps = ['plannerApp', 'salesforceApp', 'dataverseApp'];
+const apps = ['plannerApp', 'salesforceApp', 'dataflowsApp', 'dataverseApp'];
 const selected = apps.filter((app) => process.cwd() === path.resolve(root)
     || process.cwd() === path.join(root, app, 'webhook'));
 
@@ -34,6 +34,9 @@ function fixture(config) {
         Entities: [{ name: 'organization', in: 'header', required: true, type: 'string' }],
         Actions: [{ name: 'organization', in: 'header', required: true, type: 'string' },
             { name: 'entity', in: 'query', required: true, type: 'string', 'x-ms-url-encoding': 'double' }],
+        Workspaces: [{ name: 'workspaceType', in: 'query', required: true, type: 'string' }],
+        Dataflows: [{ name: 'workspaceType', in: 'query', required: true, type: 'string' },
+            { name: 'groupIdForOnRefreshComplete', in: 'path', required: true, type: 'string' }],
         GetDataSets_V2: [],
         GetTables: [{ name: 'dataset', in: 'path', required: true, type: 'string' }],
         GetScopeFilters: [{ name: 'dataset', in: 'path', required: true, type: 'string' },
@@ -52,6 +55,13 @@ function fixture(config) {
                 : [{ $ref: '#/parameters/group' }, { $ref: '#/parameters/plan' }];
         } else if (config.connectorName === 'salesforce') {
             parameters = [{ ...picker('table', 'Tables'), 'x-ms-url-encoding': 'double' }];
+        } else if (config.connectorName === 'dataflows') {
+            parameters = [
+                { name: 'workspaceType', in: 'query', type: 'string', required: true, enum: ['Workspace', 'Environment'] },
+                picker('groupIdForOnRefreshComplete', 'Workspaces', { workspaceType: 'workspaceType' }),
+                picker('dataflowIdForOnRefreshComplete', 'Dataflows',
+                    { workspaceType: 'workspaceType', groupIdForOnRefreshComplete: 'groupIdForOnRefreshComplete' }),
+            ];
         } else if (['SubscribeWebhookTrigger', 'BusinessEventsTrigger'].includes(trigger.operationName)) {
             const action = trigger.operationName === 'BusinessEventsTrigger';
             const properties = {
@@ -150,7 +160,8 @@ function environment(config, operationRequest) {
             if (args.includes('authenticate')) {
                 assert.ok(args.includes('--no-access-policy'));
                 assert.equal(options.interactive, true);
-                assert.equal(typeof options.checkConnected, 'function');
+                if (config.connectorName !== 'dataflows') assert.equal(typeof options.checkConnected, 'function');
+                else assert.deepEqual(options, { interactive: true });
                 if (env.authError) throw new Error('CLI authentication error');
                 connected = env.consentCompletes;
                 return '';
@@ -170,6 +181,10 @@ function environment(config, operationRequest) {
                 assert.ok(connected, 'Authenticate before source selection.');
                 assert.ok(!JSON.stringify(body).includes('UnusedOptional'));
                 if (body.request.path.includes('/Plans')) assert.equal(body.request.queries.groupId, 'test-id');
+                if (body.request.path.includes('/Dataflows')) {
+                    assert.equal(body.request.queries.workspaceType, 'Workspace');
+                    assert.ok(body.request.path.endsWith('/test-id'));
+                }
                 if (body.request.path.includes('/Actions')) {
                     assert.equal(body.request.headers.organization, 'test-id');
                     assert.equal(body.request.queries.entity, 'test-id');
@@ -203,7 +218,7 @@ for (const app of selected) {
     const { collectWebhookTriggers, operationRequest, validateWebhookTriggers } = await import(pathToFileURL(path.join(project, 'infra/scripts/trigger-inputs.mjs')));
     const makeEnvironment = () => environment(config, operationRequest);
 
-    {
+    if (app !== 'dataflowsApp') {
         await test(`${app}: reports actual OAuth progress and confirms success before source selection`, async () => {
             const env = makeEnvironment();
             const messages = [];

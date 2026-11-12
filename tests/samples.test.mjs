@@ -20,7 +20,7 @@ const dataverseFunctions = [
 const samples = {
     'azureblobApp/webhook': ['OnAzureBlobUpdatedFile'],
     'azureblobApp/polling': ['OnAzureBlobUpdatedFilePoll'],
-    dataflowsApp: ['OnDataflowRefreshComplete'],
+    'dataflowsApp/webhook': ['OnDataflowRefreshComplete'],
     'dataverseApp/polling': dataverseFunctions,
     'dataverseApp/webhook': dataverseFunctions,
     'genericApp/webhook': ['OnGenericConnectorEvent'],
@@ -161,7 +161,7 @@ assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector exte
 
 for (const [samplePath, expectedNames] of selected) {
     await test(samplePath, async (t) => {
-        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|plannerApp|salesforceApp|sharepointApp|teamsApp|vstsApp)\//.test(samplePath);
+        const independent = /^(azureblobApp|dataflowsApp|genericApp|office365App|onedriveApp|plannerApp|salesforceApp|sharepointApp|teamsApp|vstsApp)\//.test(samplePath);
         const appName = independent ? samplePath.split('/')[0] : samplePath;
         const isIndependentPolling = independent && samplePath.endsWith('/polling');
         const appRoot = path.join(root, samplePath);
@@ -227,13 +227,13 @@ for (const [samplePath, expectedNames] of selected) {
             assert.equal(host.version, '2.0');
             assert.equal(host.extensionBundle.id, 'Microsoft.Azure.Functions.ExtensionBundle.Preview');
             if (!isGeneric) {
-                const runtimeApp = (connectorSamples[appName] && !appsWithHooks.has(appName) && !['vstsApp', 'plannerApp', 'salesforceApp'].includes(appName)) ? 'genericApp' : samplePath;
+                const runtimeApp = (connectorSamples[appName] && !appsWithHooks.has(appName) && !['vstsApp', 'plannerApp', 'salesforceApp', 'dataflowsApp'].includes(appName)) ? 'genericApp' : samplePath;
                 const infrastructure = await readFile(path.join(root, runtimeApp, 'infra/resources.bicep'), 'utf8');
                 assert.match(infrastructure, /runtime:\s*\{\s*name:\s*'node'\s*version:\s*'24'/);
             }
         });
 
-        if (isDataverse || ['vstsApp', 'plannerApp', 'salesforceApp'].includes(appName)) {
+        if (isDataverse || ['vstsApp', 'plannerApp', 'salesforceApp', 'dataflowsApp'].includes(appName)) {
             await t.test('local setup creates settings without overwriting an existing file', async () => {
                 const directory = await mkdtemp(path.join(tmpdir(), 'connector-local-settings-'));
                 try {
@@ -287,6 +287,27 @@ for (const [samplePath, expectedNames] of selected) {
                 assert.doesNotMatch(resources, /\bConnectorToken\b|\bConnectorRuntimeUrl\b/);
                 const entrypoint = await readFile(path.join(appRoot, 'infra/main.bicep'), 'utf8');
                 assert.doesNotMatch(entrypoint, /module\s+\w+\s+'\.\.\//, 'VSTS must not import another app\'s infrastructure.');
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                assert.equal((yaml.match(/run: node \.\/infra\/scripts\/postdeploy\.mjs/g) ?? []).length, 2);
+                assert.equal((yaml.match(/interactive: true/g) ?? []).length, 2);
+            });
+        }
+
+        if (appName === 'dataflowsApp') {
+            await t.test('standalone webhook setup maps registered functions to connector operations and access policies', async () => {
+                const config = JSON.parse(await readFile(path.join(appRoot, 'infra/scripts/webhook-config.json'), 'utf8'));
+                assert.deepEqual(config.triggers.map((trigger) => trigger.functionName).sort(), [...expectedNames].sort());
+                if (!isDataverse) {
+                    const generated = connectorSamples[appName].sdk;
+                    const sdk = require(`@azure/connectors/generated/${generated}Extensions`);
+                    assert.ok(Object.values(sdk).some((value) => value && typeof value === 'object'
+                        && config.triggers.every((trigger) => Object.values(value).includes(trigger.operationName))));
+                }
+                const resources = await readFile(path.join(appRoot, 'infra/resources.bicep'), 'utf8');
+                assert.ok(resources.includes(`connectorName: '${config.connectorName}'`));
+                assert.ok(resources.includes(`${config.connectionSetting}: connectorNamespace.outputs.connectionRuntimeUrl`));
+                const namespace = await readFile(path.join(appRoot, 'infra/connectorNamespace.bicep'), 'utf8');
+                for (const principal of ['namespace-msi', 'functionapp-msi', 'dev-user']) assert.ok(namespace.includes(principal));
                 const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
                 assert.equal((yaml.match(/run: node \.\/infra\/scripts\/postdeploy\.mjs/g) ?? []).length, 2);
                 assert.equal((yaml.match(/interactive: true/g) ?? []).length, 2);
