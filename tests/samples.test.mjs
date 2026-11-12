@@ -35,11 +35,13 @@ const samples = {
     ],
     plannerApp: ['OnPlannerCompleteTask', 'OnPlannerNewTask', 'OnPlannerTaskAssignedToMe'],
     salesforceApp: ['OnSalesforceNewItems', 'OnSalesforceUpdatedItems'],
-    sharepointApp: [
+    'sharepointApp/webhook': [
         'OnSharepointChangedItems', 'OnSharepointDeletedFileItems', 'OnSharepointDeletedItems',
         'OnSharepointNewFileItems', 'OnSharepointNewItems',
         'OnSharepointNewItemsFromForm', 'OnSharepointRecurrenceDigest',
         'OnSharepointUpdatedFileClassifiedTimes', 'OnSharepointUpdatedFileItems', 'OnSharepointUpdatedItems',
+    ],
+    'sharepointApp/polling': [
         'OnSharepointChangedItemsPoll', 'OnSharepointDeletedFileItemsPoll', 'OnSharepointDeletedItemsPoll',
         'OnSharepointNewFileItemsPoll', 'OnSharepointNewItemsPoll', 'OnSharepointNewItemsFromFormPoll',
         'OnSharepointRecurrenceDigestPoll', 'OnSharepointUpdatedFileClassifiedTimesPoll',
@@ -151,7 +153,7 @@ function itemFor(appName, name, index) {
 }
 
 // Running from an app via npm test selects that app. Running from the repository
-// root exercises all seventeen apps, each with its own installed dependencies.
+// root exercises all eighteen apps, each with its own installed dependencies.
 const cwd = path.resolve(process.cwd());
 const selected = Object.entries(samples).filter(([appName]) => cwd === path.resolve(root) || cwd === path.resolve(root, appName));
 assert.ok(selected.length, 'Run tests from the repository root or a sample app directory.');
@@ -159,7 +161,7 @@ assert.ok(Number(process.versions.node.split('.')[0]) >= 24, 'The connector exte
 
 for (const [samplePath, expectedNames] of selected) {
     await test(samplePath, async (t) => {
-        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|teamsApp|vstsApp)\//.test(samplePath);
+        const independent = /^(azureblobApp|genericApp|office365App|onedriveApp|sharepointApp|teamsApp|vstsApp)\//.test(samplePath);
         const appName = independent ? samplePath.split('/')[0] : samplePath;
         const isIndependentPolling = independent && samplePath.endsWith('/polling');
         const appRoot = path.join(root, samplePath);
@@ -336,7 +338,7 @@ for (const [samplePath, expectedNames] of selected) {
             });
         }
 
-        if (['onedriveApp/polling', 'teamsApp/polling'].includes(samplePath)) {
+        if (['onedriveApp/polling', 'sharepointApp/polling', 'teamsApp/polling'].includes(samplePath)) {
             await t.test('deployment finishes its progress display before interactive setup', async () => {
                 const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
                 const workflow = yaml.match(/^workflows:\n([\s\S]*?)(?=^\S)/m)?.[1];
@@ -345,6 +347,18 @@ for (const [samplePath, expectedNames] of selected) {
                     ['package --all', 'provision', 'deploy --all']);
                 assert.match(yaml, /^hooks:\n[\s\S]*?^    postdeploy:/m, 'Run setup after standalone deploy returns.');
                 assert.doesNotMatch(yaml, /^\s+postup:/m, 'Do not run setup twice during azd up.');
+            });
+        }
+
+        if (samplePath === 'sharepointApp/polling') {
+            await t.test('automatic Poll setup covers this project without webhook callbacks', async () => {
+                const config = JSON.parse(await readFile(path.join(appRoot, 'infra/scripts/polling-config.json'), 'utf8'));
+                assert.deepEqual(config.triggers.map((trigger) => trigger.functionName).sort(), [...expectedNames].sort());
+                const yaml = await readFile(path.join(appRoot, 'azure.yaml'), 'utf8');
+                assert.equal((yaml.match(/run: node \.\/infra\/scripts\/postdeploy\.mjs/g) ?? []).length, 2);
+                const sdk = require('@azure/connectors/generated/SharepointonlineExtensions');
+                assert.ok(Object.values(sdk).some((value) => value && typeof value === 'object'
+                    && config.triggers.every((trigger) => Object.values(value).includes(trigger.operationName))));
             });
         }
 
