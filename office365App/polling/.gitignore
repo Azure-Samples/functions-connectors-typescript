@@ -1,1 +1,7 @@
 local.settings.json
+local.settings.json.bak
+node_modules/
+dist/
+*.tsbuildinfo
+.azure/
+*.env

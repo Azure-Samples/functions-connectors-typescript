@@ -1,6 +1,6 @@
 # Office 365 Outlook Connector Sample - Polling
 
-This is an independent Poll-only app; the [webhook app](../webhook/README.md) runs separately. No `EnablePollingSamples` flag is required. Function names and event processing are unchanged.
+This is an independent Poll-only app; the [webhook app][webhook-app] runs separately. No `EnablePollingSamples` flag is required. Function names and event processing are unchanged.
 
 ## Deploy and configure
 
@@ -17,7 +17,7 @@ azd up
 
 Bicep provisions this app's Function App, host storage, monitoring, Connector Namespace, connection, and connection access policies. The postdeploy hook handles authorization and source selection, creates enabled **Poll** trigger configurations, derives the endpoint from the service, and applies all Function App settings with managed-identity authentication. No webhook callback, connector extension key, or tunnel is needed.
 
-Complete OAuth consent and source-selection prompts when requested. A new `local.settings.json` is created with the real endpoint/config names and local developer authentication; an existing file is never overwritten. See the [shared Poll deployment guide](../../README.md#polling-samples) for local testing and endpoint details.
+Complete OAuth consent and source-selection prompts when requested. A new `local.settings.json` is created with the real endpoint/config names and local developer authentication; an existing file is never overwritten. See the [shared Poll deployment guide][poll-guide] for local testing and endpoint details.
 
 The hook saves source selections as `POLLING_TRIGGER_INPUTS` in this project's azd environment and reuses them on redeployment without replacing unchanged subscriptions. To change selections, run `azd env set POLLING_TRIGGER_INPUTS=`, then `azd hooks run postdeploy`. Deselected owned optional sources are disabled without losing their selectors. Other apps' and webhook configurations are never overwritten.
 
@@ -27,4 +27,7 @@ The hook authorizes the Outlook connection and configures `OnNewEmailV3` for `In
 
 ## Validate
 
-Run `npm test` for offline tests. Start Azurite if using development storage, then run `npm start`. Verify that the connection is Connected, Poll configs are Enabled, and source registration succeeded before generating events. Stop the Azure listener or use separate Poll configs when testing locally; listeners sharing a config compete for events.
+For offline tests, run `npm test` from this folder in a full repository checkout; the standalone copy does not include the repository-level tests. Start Azurite if using development storage, then run `npm start`. Verify that the connection is Connected, Poll configs are Enabled, and source registration succeeded before generating events. Stop the Azure listener or use separate Poll configs when testing locally; listeners sharing a config compete for events.
+
+[webhook-app]: https://github.com/Azure-Samples/functions-connectors-typescript/blob/main/office365App/webhook/README.md
+[poll-guide]: https://github.com/Azure-Samples/functions-connectors-typescript/blob/main/README.md#polling-samples

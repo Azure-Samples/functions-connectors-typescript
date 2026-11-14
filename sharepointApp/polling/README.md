@@ -1,6 +1,6 @@
 # SharePoint Online Connector Sample - Polling
 
-This is an independent Poll-only app; the [webhook app](../webhook/README.md) runs separately. No `EnablePollingSamples` flag is required. Function names and event processing are unchanged.
+This is an independent Poll-only app; the [webhook app][webhook-app] runs separately. No `EnablePollingSamples` flag is required. Function names and event processing are unchanged.
 
 ## Deploy and configure
 
@@ -19,11 +19,11 @@ Bicep provisions this app's Function App, host storage, monitoring, Connector Na
 
 This project's `azd up` runs packaging, provisioning, and deployment sequentially so the deployment progress display stops before interactive setup begins. Packaging no longer overlaps with provisioning. Running `azd deploy` directly still runs the same automatic setup.
 
-Complete OAuth consent and source-selection prompts when requested. A new `local.settings.json` is created with the real endpoint/config names and local developer authentication; an existing file is never overwritten. See the [shared Poll deployment guide](../../README.md#polling-samples) for local testing and endpoint details.
+Complete OAuth consent and source-selection prompts when requested. A new `local.settings.json` is created with the real endpoint/config names and local developer authentication; an existing file is never overwritten. See the [shared Poll deployment guide][poll-guide] for local testing and endpoint details.
 
 The hook saves source selections as `POLLING_TRIGGER_INPUTS` in this project's azd environment and reuses them on redeployment without replacing unchanged subscriptions. To change selections, run `azd env set POLLING_TRIGGER_INPUTS=`, then `azd hooks run postdeploy`. Deselected or skipped owned sources are disabled without losing their selectors. Other apps' and webhook configurations are never overwritten.
 
-[The polling examples](src/functions/onSharepointPoll.ts) cover all ten non-deprecated operations listed in the [SharePoint sample overview](../README.md). Each Poll function adds `Poll` to its webhook function name, for example `OnSharepointNewItemsPoll`; its setting is `OnSharepointNewItemsPollTriggerConfigName`. The operation ID and source parameters are unchanged.
+[The polling examples](src/functions/onSharepointPoll.ts) cover all ten non-deprecated operations listed in the [SharePoint sample overview][sharepoint-overview]. Each Poll function adds `Poll` to its webhook function name, for example `OnSharepointNewItemsPoll`; its setting is `OnSharepointNewItemsPollTriggerConfigName`. The operation ID and source parameters are unchanged.
 
 After consent, the hook collects the actual `sharepointonline` site, list/library, and operation-specific selectors through connector metadata and authenticated pickers. Five create/update operations are enabled by default. Deletion, form submission, Syntex classification, and recurring digest sources are opt-in and require the corresponding account permissions.
 
@@ -39,4 +39,8 @@ The hook manages listener settings through `AzureWebJobs.<FunctionName>.Disabled
 
 ## Validate
 
-Run `npm test` for offline tests. Start Azurite if using development storage, then run `npm start`. Verify that the connection is Connected, Poll configs are Enabled, and source registration succeeded before generating events. Stop the Azure listener or use separate Poll configs when testing locally; listeners sharing a config compete for events.
+For offline tests, run `npm test` from this folder in a full repository checkout; the standalone copy does not include the repository-level tests. Start Azurite if using development storage, then run `npm start`. Verify that the connection is Connected, Poll configs are Enabled, and source registration succeeded before generating events. Stop the Azure listener or use separate Poll configs when testing locally; listeners sharing a config compete for events.
+
+[webhook-app]: https://github.com/Azure-Samples/functions-connectors-typescript/blob/main/sharepointApp/webhook/README.md
+[poll-guide]: https://github.com/Azure-Samples/functions-connectors-typescript/blob/main/README.md#polling-samples
+[sharepoint-overview]: https://github.com/Azure-Samples/functions-connectors-typescript/blob/main/sharepointApp/README.md
