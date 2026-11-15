@@ -1,80 +1,97 @@
-# Office 365 Outlook Connector Sample
+# Office 365 Outlook Webhook Triggers (TypeScript)
 
-Azure Functions app demonstrating typed Office 365 Outlook triggers from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). Handlers are in [src/functions](src/functions/).
+Azure Functions sample for the [Office 365 Outlook connector](https://learn.microsoft.com/connectors/office365/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/` and logs `<FunctionName> trigger received.` followed by email or event metadata, so use a test account.
 
-| Function | Helper under `connectors.office365` | Connector operation |
-| -------- | ---------------------------------- | ------------------- |
-| [OnNewEmail](src/functions/onNewEmail.ts) | `onNewEmail` | `OnNewEmailV3` |
-| [OnFlaggedEmail](src/functions/onFlaggedEmail.ts) | `onFlaggedEmail` | `OnFlaggedEmailV4` |
-| [OnNewMentionMeEmail](src/functions/onNewMentionMeEmail.ts) | `onNewEmailMentioningMe` | `OnNewMentionMeEmailV3` |
-| [OnUpcomingEvent](src/functions/onUpcomingEvent.ts) | `onUpcomingEvents` | `OnUpcomingEventsV3` |
-| [OnCalendarNewItems](src/functions/onCalendarNewItems.ts) | `onCalendarNewItems` | `CalendarGetOnNewItemsV3` |
-| [OnCalendarUpdatedItems](src/functions/onCalendarUpdatedItems.ts) | `onCalendarUpdatedItems` | `CalendarGetOnUpdatedItemsV3` |
-| [OnCalendarChangedItems](src/functions/onCalendarChangedItems.ts) | `onCalendarChangedItems` | `CalendarGetOnChangedItemsV3` |
-| [OnSharedMailboxNewEmail](src/functions/onSharedMailboxNewEmail.ts) | `onSharedMailboxNewEmail` | `SharedMailboxOnNewEmailV2` |
-
-For Poll delivery, use the independent [polling app](../polling/README.md).
-
-The [Connector Namespaces portal](https://connectors.azure.com/) also lists **When a new email arrives (webhook)** (`CreateOnNewEmailSubscription`). That operation is deprecated, so this project does not include function code or a subscription for it. Use **When a new email arrives (V3)** (`OnNewEmailV3`), demonstrated by [OnNewEmail](src/functions/onNewEmail.ts), instead.
-
-> These handlers log email and calendar metadata. Use a test account and avoid sensitive data.
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnNewEmail` | [`OnNewEmailV3`](https://learn.microsoft.com/connectors/office365/#when-a-new-email-arrives-(v3)) | New email |
+| `OnFlaggedEmail` | [`OnFlaggedEmailV4`](https://learn.microsoft.com/connectors/office365/#when-an-email-is-flagged-(v4)-(preview)) | Flagged email (preview) |
+| `OnNewMentionMeEmail` | [`OnNewMentionMeEmailV3`](https://learn.microsoft.com/connectors/office365/#when-a-new-email-mentioning-me-arrives-(v3)) | Email mentioning me |
+| `OnCalendarNewItems` | [`CalendarGetOnNewItemsV3`](https://learn.microsoft.com/connectors/office365/#when-a-new-event-is-created-(v3)) | New event |
+| `OnCalendarUpdatedItems` | [`CalendarGetOnUpdatedItemsV3`](https://learn.microsoft.com/connectors/office365/#when-an-event-is-modified-(v3)) | Modified event |
+| `OnCalendarChangedItems` | [`CalendarGetOnChangedItemsV3`](https://learn.microsoft.com/connectors/office365/#when-an-event-is-added,-updated-or-deleted-(v3)) | Event added, updated or deleted |
+| `OnUpcomingEvent` | [`OnUpcomingEventsV3`](https://learn.microsoft.com/connectors/office365/#when-an-upcoming-event-is-starting-soon-(v3)) | Upcoming event (15-minute look-ahead) |
+| `OnSharedMailboxNewEmail` | [`SharedMailboxOnNewEmailV2`](https://learn.microsoft.com/connectors/office365/#when-a-new-email-arrives-in-a-shared-mailbox-(v2)) | Shared mailbox email (opt-in) |
 
 ## Prerequisites
 
-Follow the [shared prerequisites](../../README.md#prerequisites). You also need an Office 365 account with access to Outlook email and calendar, and permission to consent to the connector.
+- [Node.js](https://nodejs.org/) 24 or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell for the Windows hook (`postdeploy.ps1`), or Bash and `jq` for the macOS/Linux hook (`postdeploy.sh`)
+- An Office 365 mailbox and permission to authorize the connection
+- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
+
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
 ## Deploy to Azure
 
-Run from `office365App/webhook`:
-
-```sh
+```bash
+cd office365App/webhook
 az login
 azd auth login
+azd env new office365-webhook
 azd up
 ```
 
-The deployment builds the TypeScript app and runs the [postdeploy hook](azure.yaml). Complete the OAuth consent flow in your browser when prompted. Both platform hooks wait for the connection to become `Connected`, then create seven trigger configurations, or eight when a shared mailbox is configured.
+Complete the OAuth sign-in opened by `azd up` with the mailbox account to monitor. The postdeploy hook then creates one trigger configuration per function, using `Inbox` for email triggers and `Calendar` for calendar triggers, with callbacks to the deployed Function App. Use a different azd environment from polling.
 
-## Resources provisioned
+## Optional configuration
 
-- Flex Consumption Function App with a system-assigned managed identity.
-- Storage account, Application Insights, and Log Analytics workspace.
-- Connector Namespace and Office 365 Outlook connection.
+| Setting / option | Purpose |
+| --- | --- |
+| `OFFICE365_SHARED_MAILBOX_ADDRESS=<address>` | Shared mailbox email for `OnSharedMailboxNewEmail` (monitors its `Inbox`); full mailbox access required |
+| `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
+| `azd hooks run postdeploy` | Rerun consent and trigger registration without redeploying |
 
-The Preview Functions Extension Bundle is already configured in [host.json](host.json).
+Set values with `azd env set` before `azd up`, or rerun the hook afterwards. Without a shared mailbox address, its subscription is skipped with a warning; the handler still registers. Hook reruns delete and recreate the sample's trigger configurations.
 
-## Connector configuration
+## Local development
 
-The hook configures email triggers for `Inbox`, calendar triggers for `Calendar`, and a 15-minute look-ahead for upcoming events. To enable the shared mailbox example, set a mailbox the connected user can access:
+1. Create `local.settings.json` from the example (an existing file is preserved).
 
-```sh
-azd env set OFFICE365_SHARED_MAILBOX_ADDRESS "shared@contoso.com"
-```
+   ```bash
+   npm run setup:local
+   ```
 
-Without that setting, the shared mailbox subscription is skipped with an explicit warning; its handler still registers. To repeat connection consent and trigger setup without redeploying:
+2. Start Azurite in a separate terminal.
 
-```sh
-azd hooks run postdeploy
-```
+   ```bash
+   azurite
+   ```
+
+3. Install dependencies, build, and start the local Functions host with authentication enabled.
+
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
+
+   Core Tools v4 bypasses local key authentication by default. Use `--enableAuth` before exposing the host through a public tunnel so callback requests must present the system key.
+
+4. Expose port 7071 over public HTTPS. Get the **local** `connector_extension` system key from Azurite's `azure-webjobs-secrets`, not the Azure Function App's key or a function key. Keep it private.
+
+5. The postdeploy hook only targets the deployed Function App. Register a **separate** trigger configuration with `az connector-namespace trigger create` whose callback is `https://<tunnel-host>/runtime/webhooks/connector?functionName=<FunctionName>`, authenticated with the local key as the `code` query parameter. Delete it with `az connector-namespace trigger delete` when finished.
+
+Functions host storage is required. Never commit keys, callback URLs, or local settings.
 
 ## Verify
 
-Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Office 365 Outlook connection in `Connected` state and seven triggers in `Enabled` state, or eight with the shared mailbox setting. The [historical namespace overview](docs/connector-namespace-overview-office365.png) predates the additional examples.
+Check the connection is **Connected** and triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Send an email to the connected account or create a calendar event, then check logs for `<FunctionName> trigger received.`; build/deployment success alone is not real-event verification. Delivery is at least once and source detection may be delayed.
 
-Send an email to the connected account or create a calendar event, then inspect the Function App logs in Application Insights. If the connection is unauthenticated or triggers are missing, rerun the hook and complete consent.
-
-## Run locally
-
-Run `npm run setup:local`, then configure `local.settings.json` for your environment and start Azurite if using the default development storage setting:
-
-```sh
-npm install
-npm start
-```
-
-This builds the app and starts the Functions host. Receiving connector events locally also requires a reachable HTTPS callback and a separate trigger configuration targeting it; `npm start` does not create subscriptions.
+Run `azd down --purge` when finished to remove deployed resources.
 
 ## More
 
-- [Office 365 Outlook connector operations](https://learn.microsoft.com/connectors/office365/)
-- [All TypeScript samples](../../README.md#samples)
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Office 365 Outlook connector reference](https://learn.microsoft.com/connectors/office365/)

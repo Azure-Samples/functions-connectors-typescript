@@ -2,7 +2,7 @@
     "connectorName": "office365",
     "triggers": [
         {
-            "functionName": "OnNewEmailPoll",
+            "functionName": "OnNewEmail",
             "operationName": "OnNewEmailV3",
             "parameters": [
                 {
@@ -10,6 +10,31 @@
                     "value": "Inbox"
                 }
             ]
+        },
+        {
+            "functionName": "OnFlaggedEmail",
+            "operationName": "OnFlaggedEmailV4"
+        },
+        {
+            "functionName": "OnNewMentionMeEmail",
+            "operationName": "OnNewMentionMeEmailV3"
+        },
+        {
+            "functionName": "OnCalendarNewItems",
+            "operationName": "CalendarGetOnNewItemsV3"
+        },
+        {
+            "functionName": "OnCalendarUpdatedItems",
+            "operationName": "CalendarGetOnUpdatedItemsV3"
+        },
+        {
+            "functionName": "OnUpcomingEvent",
+            "operationName": "OnUpcomingEventsV3"
+        },
+        {
+            "functionName": "OnSharedMailboxNewEmail",
+            "operationName": "SharedMailboxOnNewEmailV2",
+            "optional": true
         }
     ]
 }

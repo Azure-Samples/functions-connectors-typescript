@@ -1,80 +1,99 @@
-# Azure Blob Storage Connector Sample
+# Azure Blob Storage Webhook Triggers (TypeScript)
 
-Azure Functions app demonstrating an Azure Blob Storage trigger using the generic `connectorTrigger<TItem>` API from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The handler is in [src/functions](src/functions/).
-
-Version `0.2.0-preview` exports neither `connectors.azureblob` nor `AzureBlobMetadata`. The sample imports `BlobMetadata` directly from `@azure/connectors/generated/AzureblobExtensions` under the alias `AzureBlobMetadata`, and uses `context.items`. Its function name and remote subscription remain unchanged.
+Azure Functions sample for the [Azure Blob Storage connector](https://learn.microsoft.com/connectors/azureblob/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback. The function is in its own file under `src/functions/`, uses the generic `connectorTrigger<BlobMetadata>` API, and logs `OnAzureBlobUpdatedFile trigger received.`, each blob's name, path, size, and last-modified time, and the batch count.
 
 | Function | Connector operation | Description |
-| -------- | ------------------- | ----------- |
-| [OnAzureBlobUpdatedFile](src/functions/onAzureBlobUpdatedFile.ts) | `OnUpdatedFiles_V2` | Blob is added or modified in the configured container (properties only) |
+| --- | --- | --- |
+| `OnAzureBlobUpdatedFile` | [`OnUpdatedFiles_V2`](https://learn.microsoft.com/connectors/azureblob/#when-a-blob-is-added-or-modified-(properties-only)-(v2)) | Blob added or modified (properties only) |
 
 ## Prerequisites
 
-Follow the [shared prerequisites](../../README.md#prerequisites). Deployment creates the storage account and container to watch and configures the connection with managed identity.
+- [Node.js](https://nodejs.org/) 24 or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell 7 on Windows for `postdeploy.ps1`, or Bash with `jq` on macOS/Linux for `postdeploy.sh`
+- Azure permissions to deploy resources and role assignments
+- For local development: [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local), [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite), and a public HTTPS tunnel such as [dev tunnels](https://learn.microsoft.com/azure/developer/dev-tunnels/get-started)
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
+
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
 ## Deploy to Azure
 
-Run from `azureblobApp/webhook`:
-
-```sh
+```bash
+cd azureblobApp/webhook
 az login
 azd auth login
+azd env new azureblob-webhook
 azd up
 ```
 
-The deployment builds the TypeScript app and runs the [postup hook](azure.yaml). The hook configures the connection with the namespace's system-assigned managed identity and creates one trigger targeting the provisioned test storage account's `testcontainer`.
+Use a different environment from the polling sample. Deployment provisions a separate monitored storage account with a `testcontainer` container and configures the connection with the namespace's managed identity, so no OAuth consent is needed. The `postup` hook creates the trigger configuration with the Function App's callback. Storage role assignments can take up to 10 minutes to propagate.
 
-## Resources provisioned
+## Optional configuration
 
-- Flex Consumption Function App with a system-assigned managed identity.
-- Host/deployment storage account, Application Insights, and Log Analytics workspace.
-- Separate monitored storage account with a private `testcontainer` container and shared-key authentication disabled.
-- Connector Namespace with a system-assigned managed identity and an Azure Blob Storage connection.
+Set environment values with `azd env set <setting> <value>` before `azd up`.
 
-The Functions host and deployment package continue to use the original storage account. The connector watches only the separate test account. The Preview Functions Extension Bundle is already configured in [host.json](host.json).
+| Setting / option | Purpose |
+| --- | --- |
+| `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
+| `azd hooks run postup` | Rerun connection and trigger setup without redeploying |
 
-## Connector configuration
+## Local development
 
-The namespace's managed identity has **Storage Blob Data Reader**, scoped to `testcontainer`, to list/read blobs and detect changes. The Function App's identity retains its host/deployment storage permissions and permission to use the connection; it is not granted access to the monitored account. The deployer receives **Storage Blob Data Contributor** on `testcontainer` to upload test blobs.
+Registering a local callback replaces the deployed callback for this environment; use a separate environment to avoid disrupting Azure delivery.
 
-Both hooks read `monitoredStorageAccountName` and `monitoredContainerName` from infrastructure outputs and derive `dataset` and the encoded `folderId`. For V2 operations, `dataset` is the storage account name; see the [connector limitations](https://learn.microsoft.com/connectors/azureblob/#general-known-issues-and-limitations).
+1. Prepare `local.settings.json` from the example (an existing file is preserved), then fill in its placeholders:
 
-Storage RBAC changes can take up to 10 minutes to propagate.
+   ```bash
+   npm run setup:local
+   ```
 
-To repeat connection and trigger setup without redeploying:
+2. Start Azurite in a separate terminal:
 
-```sh
-azd hooks run postup
-```
+   ```bash
+   azurite
+   ```
+
+3. Install, build, and start the host with authentication enabled:
+
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
+
+   Core Tools v4 bypasses key authentication locally by default; use `--enableAuth` before exposing the host through a public tunnel.
+
+4. Expose port 7071 through a public HTTPS tunnel, then register the `https://<tunnel-host>/runtime/webhooks/connector?functionName=OnAzureBlobUpdatedFile` callback with the local host's `connector_extension` system key (not the Azure app's key), following the [webhook configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#webhook-delivery). The `postup` hook registers the Azure callback only.
+
+After testing locally, rerun `azd hooks run postup` to restore Azure delivery, then close the tunnel. Use [polling](../polling/README.md) to avoid a tunnel.
 
 ## Verify
 
-Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Azure Blob Storage connection in `Ready` or `Connected` state and one trigger in `Enabled` state. See the [example namespace overview](docs/connectors-namespace-overview-blob.png).
+Check the connection is **Ready** or **Connected** and the trigger is **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Upload or modify a blob using the `monitoredStorageAccountName` and `monitoredContainerName` deployment outputs (the deployer is granted upload access):
 
-Add or modify a blob in `testcontainer` in the account reported by the hook, then inspect the Function App logs in Application Insights. This is a polling trigger, so delivery is not immediate.
-
-To upload using your signed-in Azure CLI identity:
-
-```sh
-az storage blob upload --auth-mode login \
-  --account-name "$(azd env get-value monitoredStorageAccountName)" \
-  --container-name testcontainer --name test.txt --file ./test.txt --overwrite
+```bash
+az storage blob upload --auth-mode login --account-name <monitoredStorageAccountName> --container-name <monitoredContainerName> --name sample.txt --file <local-file> --overwrite
 ```
 
-Create `test.txt` locally first. If authorization fails just after provisioning, allow time for RBAC propagation and retry. If the connection or trigger needs reconfiguring, rerun `azd hooks run postup`.
+Look for `OnAzureBlobUpdatedFile trigger received.` in the function logs or Application Insights. Allow time for source polling; delivery is at least once.
 
-## Run locally
+To remove the Azure resources from this folder:
 
-Run `npm run setup:local`, then configure `local.settings.json` for your environment and start Azurite if using the default development storage setting:
-
-```sh
-npm install
-npm start
+```bash
+azd down --purge
 ```
-
-This builds the app and starts the Functions host. Receiving connector events locally also requires a reachable HTTPS callback and a separate trigger configuration targeting it; `npm start` does not create subscriptions.
 
 ## More
 
-- [Azure Blob Storage connector operations](https://learn.microsoft.com/connectors/azureblob/)
-- [All TypeScript samples](../../README.md#samples)
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Azure Blob Storage connector reference](https://learn.microsoft.com/connectors/azureblob/)

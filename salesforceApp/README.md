@@ -1,7 +1,9 @@
-# Salesforce Connector Sample
+# Salesforce Connector Samples (TypeScript)
 
-Choose an independent Azure Functions app:
+Choose how the Connector Namespace delivers events to Azure Functions:
 
-- [Webhook](webhook/README.md)
+| Sample | Delivery | Local development |
+| --- | --- | --- |
+| [Webhook](webhook/) | Namespace calls the HTTPS callback | Public HTTPS tunnel |
 
-Each app has its own dependencies, source, host configuration, Bicep, and setup scripts. Run `npm ci`, `npm test`, and `azd up` from the chosen subfolder, using a distinct azd environment for each app. Existing parent-folder `.azure` environments are not moved or reused automatically.
+Samples for Salesforce record triggers using the [Salesforce connector](https://learn.microsoft.com/connectors/salesforce/). See the sample README for setup and supported triggers.

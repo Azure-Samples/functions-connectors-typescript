@@ -1,41 +1,100 @@
-# OneDrive for Business Connector Sample - Polling
+# OneDrive for Business Polling Triggers (TypeScript)
 
-This is an independent Poll-only app; the [webhook app](../webhook/README.md) runs separately. No `EnablePollingSamples` flag is required. Function names and event processing are unchanged.
+Azure Functions sample for the [OneDrive for Business connector](https://learn.microsoft.com/connectors/onedriveforbusiness/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. Each function is in its own file under `src/functions/` and logs only the trigger name and, for typed batches, the item count (for example, `Received OnOneDriveNewFile trigger (2 items).`).
 
-## Deploy and configure
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnOneDriveNewFileContent` | [`OnNewFileV2`](https://learn.microsoft.com/connectors/onedriveforbusiness/#when-a-file-is-created) | File created, including content |
+| `OnOneDriveUpdatedFileContent` | [`OnUpdatedFileV2`](https://learn.microsoft.com/connectors/onedriveforbusiness/#when-a-file-is-modified) | File modified, including content |
+| `OnOneDriveNewFile` | [`OnNewFilesV2`](https://learn.microsoft.com/connectors/onedriveforbusiness/#when-a-file-is-created-(properties-only)) | File created (properties only) |
+| `OnOneDriveUpdatedFile` | [`OnUpdatedFilesV2`](https://learn.microsoft.com/connectors/onedriveforbusiness/#when-a-file-is-modified-(properties-only)) | File modified (properties only) |
 
-Run these commands from this folder, using a unique azd environment:
+Properties-only functions use the typed `connectors.onedriveforbusiness` helpers. The content functions use `app.connectorTrigger` to return the raw payload unchanged; they log only the trigger name and never parse or log file contents.
 
-```sh
-npm ci
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) 24 or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell 7 on Windows, because azd runs the hooks with `pwsh` (the setup script itself is Node.js)
+- A OneDrive for Business account with access to the folder to watch, and permission to complete OAuth consent
+- For local development: [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite)
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
+
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
+
+## Deploy to Azure
+
+```bash
+cd onedriveApp/polling
 az login
-az extension add --name connector-namespace
 azd auth login
-azd env new <unique-polling-environment>
+azd env new onedrive-polling
 azd up
 ```
 
-Bicep provisions this app's Function App, host storage, monitoring, Connector Namespace, connection, and connection access policies. The postdeploy hook handles authorization and source selection, creates enabled **Poll** trigger configurations, derives the endpoint from the service, and applies all Function App settings with managed-identity authentication. No webhook callback, connector extension key, or tunnel is needed.
+Use a different environment from the webhook sample. Complete OAuth consent in the browser opened by the hook, then browse to a folder and choose its **Use** entry; the drive root placeholder `root` cannot be selected. The selected folder is applied to all four triggers.
 
-This project's `azd up` runs packaging, provisioning, and deployment sequentially so the deployment progress display stops before interactive setup begins. Packaging no longer overlaps with provisioning. Running `azd deploy` directly still runs the same automatic setup.
+## Optional configuration
 
-Complete OAuth consent and source-selection prompts when requested. A new `local.settings.json` is created with the real endpoint/config names and local developer authentication; an existing file is never overwritten. See the [shared Poll deployment guide](../../README.md#polling-samples) for local testing and endpoint details.
+Set environment values with `azd env set <setting> <value>` before `azd up`.
 
-The hook saves source selections as `POLLING_TRIGGER_INPUTS` in this project's azd environment and reuses them on redeployment without replacing unchanged subscriptions. To change selections, run `azd env set POLLING_TRIGGER_INPUTS=`, then `azd hooks run postdeploy`. Deselected owned optional sources are disabled without losing their selectors. Other apps' and webhook configurations are never overwritten.
-
-[The polling examples](src/functions/onOneDrivePoll.ts) cover all four operations without a public Function callback, connector extension key, or tunnel:
-
-| Poll function | Connector operation |
+| Setting / option | Purpose |
 | --- | --- |
-| `OnOneDriveNewFilePoll` | `OnNewFilesV2` |
-| `OnOneDriveUpdatedFilePoll` | `OnUpdatedFilesV2` |
-| `OnOneDriveNewFileContentPoll` | `OnNewFileV2` |
-| `OnOneDriveUpdatedFileContentPoll` | `OnUpdatedFileV2` |
+| `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
+| `POLLING_TRIGGER_INPUTS` | Saved folder selection, reused on redeployment; clear it with `azd env set POLLING_TRIGGER_INPUTS=` to choose again |
+| `azd hooks run postdeploy` | Rerun consent, folder selection, and trigger setup without redeploying |
 
-After consent, the hook browses folders through the authorized `onedriveforbusiness` connection. Select an actual folder, then choose the **Use** entry for that folder. Files are excluded; the navigation placeholder `root` is never used as a trigger ID. The selected folder is applied to all four polling sources.
+The postdeploy hook creates the Poll trigger configurations named by the `<Function>TriggerConfigName` settings in `local.settings.example.json` and applies the polling endpoint and settings to the Function App with managed-identity authentication.
 
-The metadata functions use typed helpers and log only receipt and count. The two content functions use the raw host API, preserve every envelope unchanged, and never parse or log file contents. All use single-event Poll delivery; the metadata body can itself contain multiple files. After deployment, verify source registration and create or update a small test file.
+## Local development
 
-## Validate
+If the Function App is already deployed, stop it before running locally; listeners sharing a trigger configuration compete for events.
 
-Run `npm test` for offline tests. Start Azurite if using development storage, then run `npm start`. Verify that the connection is Connected, Poll configs are Enabled, and source registration succeeded before generating events. Stop the Azure listener or use separate Poll configs when testing locally; listeners sharing a config compete for events.
+1. Prepare `local.settings.json`.
+
+   Use the ignored file generated during `azd up`, which contains the polling endpoint and trigger configuration names. An existing file is preserved. Only if the file is missing, rerun setup:
+
+   ```bash
+   azd hooks run postdeploy
+   ```
+
+2. Sign in as a developer with access to the connection, and start Azurite in a separate terminal:
+
+   ```bash
+   az login
+   azurite
+   ```
+
+3. Install, build, and start the local host:
+
+   ```bash
+   npm ci
+   npm run build
+   func start
+   ```
+
+Local runs use developer credentials; do not copy the deployed managed-identity settings locally.
+
+## Verify
+
+Check the connection is **Connected** and all four triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Create a small file (under 50 MB) in the selected folder, then modify it. Look for `Received <FunctionName> trigger` in the function logs or Application Insights. Allow time for source polling; delivery is at least once, and moving a file within OneDrive does not create a new-file event.
+
+To remove the Azure resources from this folder:
+
+```bash
+azd down --purge
+```
+
+## More
+
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [OneDrive for Business connector reference](https://learn.microsoft.com/connectors/onedriveforbusiness/)

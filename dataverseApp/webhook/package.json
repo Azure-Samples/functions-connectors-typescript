@@ -5,8 +5,7 @@
   "type": "module",
   "main": "dist/functions/*.js",
   "scripts": {
-    "build": "tsc",
-    "test": "npm run build && node --test ../../tests/samples.test.mjs ../../tests/webhook-setup.test.mjs",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
     "watch": "tsc -w",
     "prestart": "npm run build",
     "start": "func start",

@@ -1,116 +1,113 @@
-# SharePoint Online Connector Sample
+# SharePoint Online Webhook Triggers (TypeScript)
 
-Azure Functions app demonstrating typed SharePoint Online triggers from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). Handlers are in [src/functions](src/functions/).
+Azure Functions sample for the [SharePoint Online connector](https://learn.microsoft.com/connectors/sharepointonline/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses a typed `connectors.sharepoint` helper, and logs `<FunctionName> trigger received.` followed by each record (or the ID, name, and deletion details for deletion triggers). Use a test site and non-sensitive data.
 
-| Function | Helper under `connectors.sharepoint` | Connector operation |
-| -------- | ----------------------------------- | ------------------- |
-| [OnSharepointChangedItems](src/functions/onSharepointChangedItems.ts) | `onChangedItems` | `GetOnChangedItems` |
-| [OnSharepointDeletedFileItems](src/functions/onSharepointDeletedFileItems.ts) | `onDeletedFileItems` | `GetOnDeletedFileItems` |
-| [OnSharepointDeletedItems](src/functions/onSharepointDeletedItems.ts) | `onDeletedItems` | `GetOnDeletedItems` |
-| [OnSharepointNewFileItems](src/functions/onSharepointNewFileItems.ts) | `onNewFileItems` | `GetOnNewFileItems` |
-| [OnSharepointNewItems](src/functions/onSharepointNewItems.ts) | `onNewItems` | `GetOnNewItems` |
-| [OnSharepointNewItemsFromForm](src/functions/onSharepointNewItemsFromForm.ts) | `onNewItemsFromForm` | `GetOnNewItemsFromForm` |
-| [OnSharepointRecurrenceDigest](src/functions/onSharepointRecurrenceDigest.ts) | `onRecurrenceDigest` | `GetOnRecurrenceDigest` |
-| [OnSharepointUpdatedFileClassifiedTimes](src/functions/onSharepointUpdatedFileClassifiedTimes.ts) | `onUpdatedFileClassifiedTimes` | `GetOnUpdatedFileClassifiedTimes` |
-| [OnSharepointUpdatedFileItems](src/functions/onSharepointUpdatedFileItems.ts) | `onUpdatedFileItems` | `GetOnUpdatedFileItems` |
-| [OnSharepointUpdatedItems](src/functions/onSharepointUpdatedItems.ts) | `onUpdatedItems` | `GetOnUpdatedItems` |
-
-All ten non-deprecated helpers have examples. List items, file properties, classification changes, form submissions, and digests use `SharepointItemTriggerContext.records`. Whole-record JSON logging preserves the SDK's `dynamicProperties` and raw callback fields without inventing a list schema. Deletions use `DeletedItemTriggerContext.deletedItems` with fields such as `ID`, `Name`, and `TimeDeleted`.
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnSharepointNewFileItems` | [`GetOnNewFileItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-file-is-created-(properties-only)) | File created (properties only) |
+| `OnSharepointUpdatedFileItems` | [`GetOnUpdatedFileItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-file-is-created-or-modified-(properties-only)) | File created or modified (properties only) |
+| `OnSharepointNewItems` | [`GetOnNewItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-an-item-is-created) | Item created |
+| `OnSharepointUpdatedItems` | [`GetOnUpdatedItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-an-item-is-created-or-modified) | Item created or modified |
+| `OnSharepointChangedItems` | [`GetOnChangedItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-an-item-or-a-file-is-modified) | Item or file modified, not created |
+| `OnSharepointDeletedItems` | [`GetOnDeletedItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-an-item-is-deleted) | Item deleted (opt-in) |
+| `OnSharepointDeletedFileItems` | [`GetOnDeletedFileItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-file-is-deleted) | File deleted (opt-in) |
+| `OnSharepointNewItemsFromForm` | [`GetOnNewItemsFromForm`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-form-is-submitted-(preview)) | Form submitted (preview, opt-in) |
+| `OnSharepointUpdatedFileClassifiedTimes` | [`GetOnUpdatedFileClassifiedTimes`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-file-is-classified-by-a-microsoft-syntex-model) | Microsoft Syntex classification (opt-in) |
+| `OnSharepointRecurrenceDigest` | [`GetOnRecurrenceDigest`](https://learn.microsoft.com/connectors/sharepointonline/#recurring-digest-of-updates-(preview)) | Recurring digest (preview, opt-in) |
 
 ## Prerequisites
 
-Follow the [shared prerequisites](../../README.md#prerequisites). You also need a SharePoint Online account with access to the site and document library, and permission to consent to the connector.
+- [Node.js](https://nodejs.org/) 24 or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell 7 on Windows for `postdeploy.ps1`, or Bash with `jq` on macOS/Linux for `postdeploy.sh`
+- A SharePoint Online site and library, and permission to authorize the connection; deletion triggers require a site collection administrator, and classification requires a licensed Syntex model
+- For local development: [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local), [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite), and a public HTTPS tunnel such as [dev tunnels](https://learn.microsoft.com/azure/developer/dev-tunnels/get-started)
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
 
-Set the SharePoint site URL before deployment, as in the [.NET sample](https://github.com/Azure-Samples/functions-connectors-net/tree/main/sharepointApp). It is a required infrastructure parameter, so any missing-value prompt happens during provisioning setup, not inside the postdeployment hook. No Microsoft Graph site discovery is used. Connector OAuth consent is still required.
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
 ## Deploy to Azure
 
-Run from `sharepointApp/webhook`:
-
-```sh
+```bash
+cd sharepointApp/webhook
 az login
 azd auth login
-azd env new my-sharepoint-node
-azd env set SHAREPOINT_SITE_URL "https://contoso.sharepoint.com/sites/MySite"
+azd env new sharepoint-webhook
+azd env set SHAREPOINT_SITE_URL https://contoso.sharepoint.com/sites/mysite
 azd up
 ```
 
-Use a unique environment for a new deployment; omit `azd env new` when reusing an existing environment. Supply the site root, not a document-library path or sharing link.
+Use a different environment from the polling sample, and supply the site root, not a library path or sharing link. Complete OAuth consent in the browser opened by the hook; an already **Connected** connection skips consent. By default, the five create/update triggers monitor the `Documents` library.
 
-The deployment builds the TypeScript app and then runs the interactive [postdeploy hook](azure.yaml). There is no site-input prompt in that hook. Complete OAuth consent in the browser when it opens; an already `Connected` connection skips consent. By default, five create/update subscriptions monitor the `Documents` library: new/updated files, new/updated items, and modified-only items.
+## Optional configuration
 
-With azd 1.30, the deployment progress table can remain active during post hooks and overwrite their status output, even with `interactive: true`. If consent output is hidden, cancel with Ctrl+C and run the setup script directly from `sharepointApp/webhook`:
+Set environment values with `azd env set <setting> <value>` before `azd up`.
 
-```sh
-bash ./infra/scripts/postdeploy.sh
-```
-
-On Windows, run `pwsh -File ./infra/scripts/postdeploy.ps1` instead. This bypasses azd's progress renderer and reuses the provisioned resources; it does not redeploy the app.
-
-## Resources provisioned
-
-- Flex Consumption Function App with a system-assigned managed identity.
-- Storage account, Application Insights, and Log Analytics workspace.
-- Connector Namespace and SharePoint Online connection.
-
-The Preview Functions Extension Bundle is already configured in [host.json](host.json).
-
-## Connector configuration
-
-Configure these values with `azd env set <setting> <value>` before `azd up`:
-
-| azd setting | Default / purpose |
-| ----------- | ----------------- |
-| `SHAREPOINT_SITE_URL` | Required site-root URL, e.g. `https://contoso.sharepoint.com/sites/MySite` |
-| `SHAREPOINT_LIBRARY_NAME` | `Documents`; document-library name or GUID |
+| Setting / option | Purpose |
+| --- | --- |
+| `SHAREPOINT_SITE_URL` | Required site-root URL |
+| `SHAREPOINT_LIBRARY_NAME` | `Documents`; library name or GUID |
 | `SHAREPOINT_LIST_NAME` | Empty uses the library; otherwise a list name or GUID for item/form triggers |
-| `SHAREPOINT_FOLDER_PATH` | Empty monitors the library; optional file/digest filter, not an item/form filter |
-| `SHAREPOINT_ENABLE_DELETION_TRIGGERS` | `false`; enables item/file deletion, requiring the connection user to be a site collection administrator |
-| `SHAREPOINT_ENABLE_SYNTEX_TRIGGER` | `false`; enables classification after a licensed Syntex model is applied to the library |
-| `SHAREPOINT_FORM_ID` | Empty disables submissions; set an existing supported form ID on the selected list/library |
-| `SHAREPOINT_DIGEST_SCHEDULE` | Empty disables the library digest; `*` means daily, or `0` through `6` selects a day of the week |
+| `SHAREPOINT_FOLDER_PATH` | Empty; optional file/digest folder filter |
+| `SHAREPOINT_ENABLE_DELETION_TRIGGERS` | `false`; enables item/file deletion triggers |
+| `SHAREPOINT_ENABLE_SYNTEX_TRIGGER` | `false`; enables the Syntex classification trigger |
+| `SHAREPOINT_FORM_ID` | Empty; set an existing form ID to enable form submissions |
+| `SHAREPOINT_DIGEST_SCHEDULE` | Empty; `*` for a daily digest or `0` through `6` for a day of the week |
+| `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
+| `azd hooks run postdeploy` | Rerun consent and trigger setup without redeploying |
 
-Library/list names or GUIDs supply the SDK's required `table` parameter; they are not folder IDs. Use the actual library name or GUID if the site's library is not named `Documents`. The digest includes both new and updated files.
+Opt-in functions are disabled in Azure with `AzureWebJobs.<Function>.Disabled` unless selected. To disable them again, reset the flags or clear the form ID/schedule and rerun `azd up`.
 
-For example:
+## Local development
 
-```sh
-azd env set SHAREPOINT_LIBRARY_NAME "Documents"
-azd env set SHAREPOINT_LIST_NAME "Tasks"
-azd env set SHAREPOINT_ENABLE_DELETION_TRIGGERS true
-azd env set SHAREPOINT_FORM_ID "your-form-id"
-azd env set SHAREPOINT_DIGEST_SCHEDULE "*"
-azd up
-```
+Registering local callbacks replaces the deployed callbacks for this environment; use a separate environment to avoid disrupting Azure delivery.
 
-Deletion, classification, forms, and digest functions are disabled in Azure unless selected. Reset flags to `false` or clear the form ID/schedule and rerun `azd up` to disable those functions and any existing matching trigger configurations. Selected registrations are created or updated in place, not deleted and recreated.
+1. Prepare `local.settings.json` from the example (an existing file is preserved), fill in its placeholders, and add `AzureWebJobs.<Function>.Disabled` flags matching your opt-in selection:
 
-The hook consumes provisioned configuration. After changing these settings, rerun `azd up`, or `azd provision` followed by the hook. After a standalone `azd deploy`, or to repeat setup with the existing provisioned configuration:
+   ```bash
+   npm run setup:local
+   ```
 
-```sh
-azd hooks run postdeploy
-```
+2. Start Azurite in a separate terminal:
+
+   ```bash
+   azurite
+   ```
+
+3. Install, build, and start the host with authentication enabled:
+
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
+
+   Core Tools v4 bypasses key authentication locally by default; use `--enableAuth` before exposing the host through a public tunnel.
+
+4. Expose port 7071 through a public HTTPS tunnel, then register each function's `https://<tunnel-host>/runtime/webhooks/connector?functionName=<Function>` callback with the local host's `connector_extension` system key (not the Azure app's key), following the [webhook configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#webhook-delivery). The postdeploy hook registers Azure callbacks only.
+
+After testing locally, rerun `azd hooks run postdeploy` to restore Azure delivery, then close the tunnel. Use [polling](../polling/README.md) to avoid a tunnel.
 
 ## Verify
 
-Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one SharePoint Online connection in `Connected` state and five default triggers in `Enabled` state, or up to ten with all optional settings selected.
+Check the connection is **Connected** and the selected triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Create, then modify, a file or item in the monitored library or list, and look for `<FunctionName> trigger received.` in the function logs or Application Insights. Optional triggers require their corresponding source action. Delivery is at least once, so production handlers should be idempotent.
 
-Create, modify, or delete a test file or list item, submit the configured form, or wait for the digest schedule, then inspect Function App logs. If the connection is unauthenticated or expected subscriptions are missing, check the optional settings, rerun the hook, and complete consent.
+To remove the Azure resources from this folder:
 
-## Run locally
-
-Run `npm run setup:local`, then configure `local.settings.json` for your environment and start Azurite if using the default development storage setting:
-
-```sh
-npm install
-npm start
+```bash
+azd down --purge
 ```
-
-This builds the app and starts the Functions host. Receiving connector events locally also requires a reachable HTTPS callback and a separate trigger configuration targeting it; `npm start` does not create subscriptions.
-
-Local settings are not generated by this hook. Match the `AzureWebJobs.<FunctionName>.Disabled` flags to your optional-trigger selection when running locally.
 
 ## More
 
-- [SharePoint Online connector operations](https://learn.microsoft.com/connectors/sharepointonline/)
-- [All TypeScript samples](../../README.md#samples)
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [SharePoint Online connector reference](https://learn.microsoft.com/connectors/sharepointonline/)

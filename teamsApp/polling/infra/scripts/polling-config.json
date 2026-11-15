@@ -2,53 +2,53 @@
     "connectorName": "teams",
     "triggers": [
         {
-            "functionName": "OnNewChannelMessagePoll",
+            "functionName": "OnNewChannelMessage",
             "operationName": "OnNewChannelMessage"
         },
         {
-            "functionName": "OnNewChannelMessageMentioningMePoll",
+            "functionName": "OnNewChannelMessageMentioningMe",
             "operationName": "OnNewChannelMessageMentioningMe"
         },
         {
-            "functionName": "OnGroupMembershipAddPoll",
+            "functionName": "OnGroupMembershipAdd",
             "operationName": "OnGroupMembershipAdd"
         },
         {
-            "functionName": "OnGroupMembershipRemovalPoll",
+            "functionName": "OnGroupMembershipRemoval",
             "operationName": "OnGroupMembershipRemoval"
         },
         {
-            "functionName": "OnWebhookAtMentionPoll",
+            "functionName": "OnWebhookAtMention",
             "operationName": "WebhookAtMentionTrigger",
             "optional": true
         },
         {
-            "functionName": "OnWebhookMessageReactionPoll",
+            "functionName": "OnWebhookMessageReaction",
             "operationName": "WebhookMessageReactionTrigger",
             "optional": true
         },
         {
-            "functionName": "OnTranscriptAvailablePoll",
+            "functionName": "OnTranscriptAvailable",
             "operationName": "TranscriptTrigger",
             "optional": true
         },
         {
-            "functionName": "OnRecordingAvailablePoll",
+            "functionName": "OnRecordingAvailable",
             "operationName": "RecordingTrigger",
             "optional": true
         },
         {
-            "functionName": "OnWebhookChatMessagePoll",
+            "functionName": "OnWebhookChatMessage",
             "operationName": "WebhookChatMessageTrigger",
             "optional": true
         },
         {
-            "functionName": "OnWebhookKeywordPoll",
+            "functionName": "OnWebhookKeyword",
             "operationName": "WebhookKeywordTrigger",
             "optional": true
         },
         {
-            "functionName": "OnWebhookNewMessagePoll",
+            "functionName": "OnWebhookNewMessage",
             "operationName": "WebhookNewMessageTrigger",
             "optional": true
         }

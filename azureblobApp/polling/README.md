@@ -1,31 +1,101 @@
-# Azure Blob Storage Connector Sample - Polling
+# Azure Blob Storage Polling Triggers (TypeScript)
 
-This is an independent Poll-only app; the [webhook app](../webhook/README.md) runs separately. No `EnablePollingSamples` flag is required. Function names and event processing are unchanged.
+Azure Functions sample for the [Azure Blob Storage connector](https://learn.microsoft.com/connectors/azureblob/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. The function is in its own file under `src/functions/`, uses the generic `connectorTrigger<BlobMetadata>` API, and logs only the trigger name and item count (`Received OnAzureBlobUpdatedFile trigger (<Count> items).`).
 
-## Deploy and configure
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnAzureBlobUpdatedFile` | [`OnUpdatedFiles_V2`](https://learn.microsoft.com/connectors/azureblob/#when-a-blob-is-added-or-modified-(properties-only)-(v2)) | Blob added or modified (properties only) |
 
-Run these commands from this folder, using a unique azd environment:
+## Prerequisites
 
-```sh
-npm ci
+- [Node.js](https://nodejs.org/) 24 or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell 7 on Windows, because azd runs the hooks with `pwsh` (the setup script itself is Node.js)
+- Azure permissions to deploy resources and role assignments
+- For local development: [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite)
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
+
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
+
+## Deploy to Azure
+
+```bash
+cd azureblobApp/polling
 az login
 azd auth login
-azd env new <unique-polling-environment>
+azd env new azureblob-polling
 azd up
 ```
 
-Bicep provisions this app's Function App, host storage, monitoring, Connector Namespace, managed-identity connection, connection access policies, and monitored storage account/container. The postdeploy hook creates the enabled **Poll** trigger configuration, derives the endpoint from the service, and applies all Function App settings with managed-identity authentication. No OAuth consent, source-selection prompts, webhook callback, connector extension key, or tunnel is needed.
+Use a different environment from the webhook sample. Deployment provisions a separate monitored storage account with a `testcontainer` container and configures the connection with the namespace's managed identity, so no OAuth consent or source prompts are needed. The hook creates the Poll trigger configuration for that container. Storage role assignments can take up to 10 minutes to propagate.
 
-A new `local.settings.json` is created with the real endpoint/config names and local developer authentication; an existing file is never overwritten. See the [shared Poll deployment guide](../../README.md#polling-samples) for endpoint details and the local-testing instructions below.
+## Optional configuration
 
-The hook saves the provisioned source parameters as `POLLING_TRIGGER_INPUTS` in this project's azd environment and reuses them on redeployment without replacing unchanged subscriptions. To regenerate them from the infrastructure outputs, run `azd env set POLLING_TRIGGER_INPUTS=`, then `azd hooks run postdeploy`. Other apps' and webhook configurations are never overwritten.
+Set environment values with `azd env set <setting> <value>` before `azd up`.
 
-[OnAzureBlobUpdatedFilePoll](src/functions/onAzureBlobPoll.ts) receives the same `OnUpdatedFiles_V2` operation using `DeliveryMode.Poll`. Unlike the default Webhook delivery, it needs no public Function callback, connector extension key, or tunnel. It uses the SDK's `BlobMetadata` with the generic helper, logs only receipt and item count, and preserves `context.rawPayload`.
+| Setting / option | Purpose |
+| --- | --- |
+| `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
+| `POLLING_TRIGGER_INPUTS` | Saved source parameters, reused on redeployment; clear it with `azd env set POLLING_TRIGGER_INPUTS=` to regenerate them from the infrastructure outputs |
+| `azd hooks run postdeploy` | Rerun trigger setup without redeploying |
 
-Bicep configures the `azureblob` connection with the namespace's managed identity and provisions a separate monitored storage account and `testcontainer`. It grants container-reader access to the namespace identity and upload access to the deployer. The hook supplies the account `dataset` and encoded container `folderId` automatically.
+The trigger configuration name comes from the `OnAzureBlobUpdatedFileTriggerConfigName` setting in `local.settings.example.json`; the hook applies it and the polling endpoint to the Function App with managed-identity authentication.
 
-After deployment, verify source registration, upload a small test blob, and check for `OnAzureBlobUpdatedFilePoll trigger received.` Allow for the connector's polling interval and RBAC propagation.
+## Local development
 
-## Validate
+If the Function App is already deployed, stop it before running locally; listeners sharing a trigger configuration compete for events.
 
-Run `npm test` for offline tests. Start Azurite if using development storage, then run `npm start`. Verify that the connection is Ready or Connected, Poll configs are Enabled, and source registration succeeded before generating events. Stop the Azure listener or use separate Poll configs when testing locally; listeners sharing a config compete for events.
+1. Prepare `local.settings.json`.
+
+   Use the ignored file generated during `azd up`, which contains the polling endpoint and trigger configuration name. An existing file is preserved. Only if the file is missing, rerun setup:
+
+   ```bash
+   azd hooks run postdeploy
+   ```
+
+2. Sign in as a developer with access to the connection, and start Azurite in a separate terminal:
+
+   ```bash
+   az login
+   azurite
+   ```
+
+3. Install, build, and start the local host:
+
+   ```bash
+   npm ci
+   npm run build
+   func start
+   ```
+
+Local runs use developer credentials; do not copy the deployed managed-identity settings locally.
+
+## Verify
+
+Check the connection is **Ready** or **Connected** and the trigger is **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Upload or modify a blob using the `monitoredStorageAccountName` and `monitoredContainerName` deployment outputs (the deployer is granted upload access):
+
+```bash
+az storage blob upload --auth-mode login --account-name <monitoredStorageAccountName> --container-name <monitoredContainerName> --name sample.txt --file <local-file> --overwrite
+```
+
+Look for `Received OnAzureBlobUpdatedFile trigger (<Count> items).` in the function logs or Application Insights. Allow time for source polling; delivery is at least once.
+
+To remove the Azure resources from this folder:
+
+```bash
+azd down --purge
+```
+
+## More
+
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Azure Blob Storage connector reference](https://learn.microsoft.com/connectors/azureblob/)

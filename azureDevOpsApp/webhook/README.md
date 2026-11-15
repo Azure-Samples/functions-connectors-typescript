@@ -1,0 +1,105 @@
+# Azure DevOps (formerly Visual Studio Team Services) Webhook Triggers (TypeScript)
+
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). It handles [Azure DevOps connector](https://learn.microsoft.com/connectors/visualstudioteamservices/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by a few identifying fields of each build, pull request, push, changeset, or work item.
+
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnAzureDevOpsBuildCompleted` | [`OnBuildCompleted`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-a-build-completes) | Build completed |
+| `OnAzureDevOpsGitPullClosed` | [`OnGitPullClosed`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-a-pull-request-is-closed-(git)) | Pull request closed |
+| `OnAzureDevOpsGitPullCreated` | [`OnGitPullCreated`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-a-pull-request-is-created-(git)) | Pull request created |
+| `OnAzureDevOpsGitPush` | [`OnGitPush`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-code-is-pushed-(git)) | Code pushed (Git) |
+| `OnAzureDevOpsTfvcCheckIn` | [`OnTfvcCheckIn`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-code-is-checked-in-(tfvc)) | Code checked in (TFVC) |
+| `OnAzureDevOpsWorkItemAssigned` | [`OnWorkItemAssignedV2`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-a-work-item-is-assigned) | Work item assigned |
+| `OnAzureDevOpsWorkItemClosed` | [`OnWorkItemClosedV2`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-a-work-item-is-closed) | Work item closed |
+| `OnAzureDevOpsWorkItemCreated` | [`OnWorkItemCreatedV2`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-a-work-item-is-created) | Work item created |
+| `OnAzureDevOpsWorkItemUpdated` | [`OnWorkItemUpdatedV2`](https://learn.microsoft.com/connectors/visualstudioteamservices/#when-a-work-item-is-updated) | Work item updated |
+
+## Prerequisites
+
+- [Node.js 24](https://nodejs.org/) or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- An Azure DevOps organization/project and an account in the organization's home tenant with access to the selected builds, repositories, teams, or work items (TFVC triggers need a TFVC project)
+- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
+
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
+
+## Deploy to Azure
+
+```bash
+cd azureDevOpsApp/webhook
+az login
+azd auth login
+azd env new azuredevops-webhook
+azd up
+```
+
+Complete the Microsoft Entra ID OAuth sign-in opened by `azd up` with an account from the Azure DevOps organization's home tenant; [user connections only list organizations in that tenant](https://learn.microsoft.com/connectors/visualstudioteamservices/#known-issues-and-limitations). Setup prompts only for required selectors such as organization, project, repository, team, and member; optional filters keep connector defaults. Configure or skip each trigger when prompted; at least one trigger must be configured. If setup fails or is interrupted, run `azd hooks run postdeploy` to retry without redeploying.
+
+The connection uses Microsoft Entra ID OAuth (`EntraOAuth`). Setup refuses an existing legacy Azure DevOps OAuth connection; recreate it with this template instead of retrying consent.
+
+## Optional configuration
+
+Set environment values before `azd up`.
+
+| Setting / option | Purpose |
+| --- | --- |
+| `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
+| `AZURE_DEVOPS_WEBHOOK_TRIGGER_INPUTS` | Saved trigger selections reused on rerun; run `azd env set AZURE_DEVOPS_WEBHOOK_TRIGGER_INPUTS=` then `azd hooks run postdeploy` to select again |
+| `AzureWebJobs.<FunctionName>.Disabled` | App setting written by setup; `true` for skipped triggers |
+
+Skipped triggers' subscriptions are disabled, not deleted. Subscriptions owned by other apps are never overwritten.
+
+## Local development
+
+1. Prepare `local.settings.json`.
+
+   `azd up` creates it with the `AzureDevOpsConnection` runtime URL; existing files are preserved. Without a deployment, create it from the example and fill in the placeholder:
+
+   ```bash
+   npm run setup:local
+   ```
+
+2. Start Azurite in a separate terminal.
+
+   ```bash
+   azurite
+   ```
+
+3. Install, build, and start the local Functions host with authentication enabled.
+
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
+
+   Core Tools v4 bypasses local key authentication by default. Use `--enableAuth` before exposing the host through a public tunnel so callback requests must present the system key.
+
+4. Expose port 7071 over public HTTPS. Get the **local** `connector_extension` system key from Azurite's `azure-webjobs-secrets`, not the Azure Function App's key or a function key. Keep it private.
+
+5. In [Connector Namespaces](https://connectors.azure.com/), create a separate trigger configuration whose callback is `https://<tunnel-host>/runtime/webhooks/connector?functionName=<FunctionName>` with the local key as the `code` query parameter. The postdeploy hook only targets the deployed Function App, so do not retarget the deployed subscription.
+
+6. When finished, disable or delete the local trigger configuration.
+
+Never commit keys, callback URLs, or local settings.
+
+## Verify
+
+Check the connection is **Connected** and selected triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Queue a build, open/close a pull request, push code, check in TFVC changes, or create/assign/update/close a work item, then check Function App logs for `<FunctionName> trigger received.`; build/deployment success alone is not real-event verification. Delivery is at least once and source detection may be delayed.
+
+Run `azd down --purge` when finished.
+
+## More
+
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Azure DevOps connector reference](https://learn.microsoft.com/connectors/visualstudioteamservices/)

@@ -1,61 +1,101 @@
-# Generic Connector Trigger Sample - Polling
+# Generic Connector Polling Triggers (TypeScript)
 
-`OnGenericConnectorEvent` receives raw events through `app.connectorTrigger` with `DeliveryMode.Poll` and logs only `OnGenericConnectorEvent (generic API) trigger received.` It uses no connector SDK models and does not normalize or inspect payloads. The [webhook app](../webhook/README.md) runs separately. No public callback, tunnel, or `EnablePollingSamples` flag is required.
+Connector-neutral Azure Functions sample using the raw `app.connectorTrigger` API from [@azure/functions](https://www.npmjs.com/package/@azure/functions) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from an existing Connector Namespace trigger configuration; no public callback or tunnel is needed. This sample has no `azd` provisioning or postdeploy hooks.
+
+The function is in its own file under `src/functions/`, receives an `unknown` payload without connector-specific models, and logs only the trigger name.
+
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnGenericConnectorEvent` | Any supported [connector](https://learn.microsoft.com/connectors/connector-reference/) trigger, for example Azure Blob [`OnUpdatedFiles_V2`](https://learn.microsoft.com/connectors/azureblob/#when-a-blob-is-added-or-modified-(properties-only)-(v2)) | Raw event from the Poll trigger configuration named by `GenericTriggerConfigName` |
 
 ## Prerequisites
 
-Requires Node.js 24+, Functions Core Tools v4, Azure CLI, and Azurite for local storage. Use an existing authorized Connector Namespace connection and enabled Poll trigger configuration. Grant the namespace identity and receiving developer/app identity connection access. Follow the [Poll setup and access-policy guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery).
+- [Node.js 24](https://nodejs.org/) or later
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- An existing Connector Namespace with an authorized connection and an enabled Poll trigger configuration; follow the [Poll setup and access-policy guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery)
+- Connection access for the receiving developer and Function App identities
+- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) for publishing and local development, and [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) for local storage
+- Optionally, the [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli) to create or inspect trigger configurations:
 
-This app has no provisioning template, `azd up`, or postdeploy hook. Provision resources separately or use a dedicated connector sample. The handler is connector-neutral; it does not subscribe to Office 365.
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
 
-## Deploy and configure
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
-Use an existing Node.js 24 Function App with host and deployment storage. Enable its system-assigned managed identity and keep the namespace's identity. Configure these deployed app settings:
+## Deploy to Azure
+
+Use an existing Node.js 24 Function App with host and deployment storage. Enable its system-assigned managed identity, grant it connection access, and configure these app settings:
 
 | Setting | Value |
 | --- | --- |
 | `GenericTriggerConfigName` | Existing enabled Poll trigger configuration name |
-| `ConnectorNamespace__pollingEndpoint` | Base derived from its service `pollingEndpoints.receiveUri` |
+| `ConnectorNamespace__pollingEndpoint` | Base derived from the trigger's `pollingEndpoints.receiveUri` (see Local development) |
 | `ConnectorNamespace__credential` | `managedidentity` |
 | `AzureWebJobsStorage__credential` | `managedidentity` |
 | `AzureWebJobsStorage__blobServiceUri`, `AzureWebJobsStorage__queueServiceUri`, `AzureWebJobsStorage__tableServiceUri` | Host storage account's Blob, Queue, and Table endpoints |
 
-Grant the app principal connection access and Storage Blob Data Owner, Storage Queue Data Contributor, and Storage Table Data Contributor on host storage. For Flex deployment storage, use `SystemAssignedIdentity` authentication and grant Storage Blob Data Contributor on its container (covered by Blob Data Owner when shared). Configure Node.js 24 through the Flex runtime configuration, not `FUNCTIONS_WORKER_RUNTIME`.
+Grant the app principal Storage Blob Data Owner, Storage Queue Data Contributor, and Storage Table Data Contributor on host storage. Then publish from this folder:
 
-Run from this folder:
-
-```sh
-npm ci
+```bash
+cd genericApp/polling
 az login
+npm ci
 npm run build
 func azure functionapp publish <function-app-name>
 ```
 
-Local settings are not published. Keep the Preview Functions Extension Bundle in [host.json](host.json).
+Local settings are not published. Use separate trigger configurations for separate delivery environments.
 
-## Run locally
+## Optional configuration
 
-If absent, copy `local.settings.example.json` to `local.settings.json`; preserve existing values. Fill in `GenericTriggerConfigName` and derive the endpoint from the service's receive URI:
-
-| Receive URI | Endpoint setting |
+| Setting / option | Purpose |
 | --- | --- |
-| `https://<host>/api/triggerconfigs/<name>/receive?...` | `https://<host>` |
-| `https://<host>/api/connectorGateways/<id>/triggerconfigs/<name>/receive?...` | `https://<host>/api/connectorGateways/<id>` |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Host telemetry |
+| `APPLICATIONINSIGHTS_AUTHENTICATION_STRING=Authorization=AAD` | Entra telemetry; grant the app principal Monitoring Metrics Publisher on Application Insights |
 
-Preserve the host and gateway prefix; remove the operation path and query. `ConnectorNamespace` is a settings prefix, not a connection resource name.
+## Local development
 
-Omit managed-identity credentials locally and sign in with the developer granted connection access. Start Azurite separately first:
+Stop the deployed Function App or use a separate trigger configuration to avoid competing listeners.
 
-```sh
-npm ci
-az login
-npm start
-```
+1. Copy `local.settings.example.json` to `local.settings.json` if it does not exist.
+2. Set `GenericTriggerConfigName` and `ConnectorNamespace__pollingEndpoint`, derived from the trigger's receive URI by removing the operation path and query:
 
-Stop the deployed listener or use separate trigger configurations to avoid competing for events. `UseDevelopmentStorage=true` is local only. Never commit tokens or private local settings.
+   | Receive URI | Endpoint setting |
+   | --- | --- |
+   | `https://<host>/api/triggerconfigs/<name>/receive` | `https://<host>` |
+   | `https://<host>/api/connectorGateways/<id>/triggerconfigs/<name>/receive` | `https://<host>/api/connectorGateways/<id>` |
 
-## Validate
+3. Omit managed-identity settings locally and sign in with your developer identity:
 
-Run `npm test` for offline tests. Cause an event for the configured operation, such as a test blob added or modified through Azure Blob's `OnUpdatedFiles_V2`. Verify source registration and a successful invocation with the receipt log, not just a running admin host. Delivery may repeat; this sample neither deduplicates nor exposes Poll `MessageId` metadata.
+   ```bash
+   az login
+   ```
 
-Set `APPLICATIONINSIGHTS_CONNECTION_STRING` for host telemetry when needed. For Entra telemetry, set `APPLICATIONINSIGHTS_AUTHENTICATION_STRING=Authorization=AAD` and grant the app principal Monitoring Metrics Publisher. This app adds no separate SDK exporter. Disable or remove only configurations created for your test; do not delete shared resources.
+4. Start Azurite in a separate terminal:
+
+   ```bash
+   azurite
+   ```
+
+5. Install, build, and start:
+
+   ```bash
+   npm ci
+   npm run build
+   func start
+   ```
+
+## Verify
+
+In [Connector Namespaces](https://connectors.azure.com/), check the connection is **Connected** and the trigger configuration is **Enabled**.
+
+Cause an event for the configured operation, then look for `OnGenericConnectorEvent (generic API) trigger received.` in the logs. Delivery is at least once; this sample does not deduplicate. Disable or remove only configurations created for your test; do not delete shared resources.
+
+## More
+
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Connector trigger configuration](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md)
+- [Connector reference](https://learn.microsoft.com/connectors/connector-reference/)

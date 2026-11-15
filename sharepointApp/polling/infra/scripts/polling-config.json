@@ -2,48 +2,48 @@
     "connectorName": "sharepointonline",
     "triggers": [
         {
-            "functionName": "OnSharepointChangedItemsPoll",
+            "functionName": "OnSharepointChangedItems",
             "operationName": "GetOnChangedItems"
         },
         {
-            "functionName": "OnSharepointDeletedFileItemsPoll",
+            "functionName": "OnSharepointDeletedFileItems",
             "operationName": "GetOnDeletedFileItems",
             "optional": true
         },
         {
-            "functionName": "OnSharepointDeletedItemsPoll",
+            "functionName": "OnSharepointDeletedItems",
             "operationName": "GetOnDeletedItems",
             "optional": true
         },
         {
-            "functionName": "OnSharepointNewFileItemsPoll",
+            "functionName": "OnSharepointNewFileItems",
             "operationName": "GetOnNewFileItems"
         },
         {
-            "functionName": "OnSharepointNewItemsPoll",
+            "functionName": "OnSharepointNewItems",
             "operationName": "GetOnNewItems"
         },
         {
-            "functionName": "OnSharepointNewItemsFromFormPoll",
+            "functionName": "OnSharepointNewItemsFromForm",
             "operationName": "GetOnNewItemsFromForm",
             "optional": true
         },
         {
-            "functionName": "OnSharepointRecurrenceDigestPoll",
+            "functionName": "OnSharepointRecurrenceDigest",
             "operationName": "GetOnRecurrenceDigest",
             "optional": true
         },
         {
-            "functionName": "OnSharepointUpdatedFileClassifiedTimesPoll",
+            "functionName": "OnSharepointUpdatedFileClassifiedTimes",
             "operationName": "GetOnUpdatedFileClassifiedTimes",
             "optional": true
         },
         {
-            "functionName": "OnSharepointUpdatedFileItemsPoll",
+            "functionName": "OnSharepointUpdatedFileItems",
             "operationName": "GetOnUpdatedFileItems"
         },
         {
-            "functionName": "OnSharepointUpdatedItemsPoll",
+            "functionName": "OnSharepointUpdatedItems",
             "operationName": "GetOnUpdatedItems"
         }
     ]

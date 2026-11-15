@@ -1,47 +1,95 @@
-# Dataflows Connector Sample
+# Dataflows Webhook Triggers (TypeScript)
 
-Azure Functions app covering `connectors.dataflows.onRefreshComplete` from `@azure/functions-extensions-connectors@0.2.0-preview`.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). It handles [Dataflows connector](https://learn.microsoft.com/connectors/dataflows/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by the dataflow name, ID, status, and start/end times.
 
-| Function | Connector operation | Required parameters |
-| -------- | ------------------- | ------------------- |
-| [OnDataflowRefreshComplete](src/functions/onDataflowRefreshComplete.ts) | `OnRefreshComplete` | `workspaceType`, `groupIdForOnRefreshComplete`, `dataflowIdForOnRefreshComplete` |
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnDataflowRefreshComplete` | [`OnRefreshComplete`](https://learn.microsoft.com/connectors/dataflows/#when-a-dataflow-refresh-completes) | Dataflow refresh completed |
 
-The handler receives `DataflowRefreshTriggerContext.refreshes`, typed as SDK `RefreshModel[]`, and logs the dataflow name, refresh status, and times. `DataflowsOnRefreshCompleteTriggerPayload` describes the **normalized** callback context; the SDK does not export a raw callback-envelope alias. The handler returns `context.rawPayload` unchanged.
+## Prerequisites
 
-## Prerequisites and local development
+- [Node.js 24](https://nodejs.org/) or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- A Power BI workspace or Power Platform environment with a dataflow, and permission to authorize the connection
+- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
 
-Follow the [shared prerequisites](../../README.md#prerequisites), including Node.js 24+. For live events, use a test account with access to the selected Power BI workspace or Power Platform environment and dataflow.
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
 
-From this folder:
+  Or in PowerShell:
 
-```sh
-npm ci
-npm test
-npm start
-```
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
-Run `npm run setup:local`, then configure `local.settings.json` without committing credentials, and run Azurite for development storage. Local event delivery also needs a reachable HTTPS callback and a separately configured subscription.
+## Deploy to Azure
 
-## Deploy and configure
-
-The self-contained [infra/main.bicep](infra/main.bicep) template provisions a Node.js 24 Flex Consumption Function App, host storage, monitoring, a Connector Namespace, a `dataflows` connection, and access policies for the namespace, Function App, and deployer.
-
-```sh
+```bash
+cd dataflowsApp/webhook
 az login
-az extension add --name connector-namespace
 azd auth login
-azd env new <unique-dataflows-webhook-environment>
+azd env new dataflows-webhook
 azd up
 ```
 
-Packaging, provisioning, and deployment run sequentially before the interactive postdeploy hook. If needed, it runs `az connector-namespace connection authenticate`; complete consent in your normal browser and keep the terminal open. The CLI extension must support that command. Setup verifies `Connected`, asks whether to configure the trigger, then collects only required selectors, for example Group Type and Dataflow. Group Type selects `Workspace` or `Environment`; authenticated pickers resolve the dependent group and dataflow IDs.
+Complete the OAuth sign-in opened by `azd up` with an account that can access the dataflow. Setup asks for the group type (`Workspace` or `Environment`), then uses pickers to select the group and dataflow. Configure or skip each trigger when prompted; at least one trigger must be configured. If setup fails or is interrupted, run `azd hooks run postdeploy` to retry without redeploying.
 
-An empty usable picker allows manual connector-ID entry; blank skips the trigger. With no selected trigger, setup stops before changes. The hook retrieves the extension key securely, creates the webhook subscription, and sets `DataflowsConnection` and listener-enabled settings.
+## Optional configuration
 
-Selections are saved in `DATAFLOWS_WEBHOOK_TRIGGER_INPUTS`; unchanged reruns reuse the subscription. Clear it with `azd env set DATAFLOWS_WEBHOOK_TRIGGER_INPUTS=`, then run `azd hooks run postdeploy` to select again. Poll and other apps' subscriptions are never overwritten.
+Set environment values before `azd up`.
 
-A fresh `local.settings.json` receives the runtime URL; existing local settings are preserved. Local callbacks still need a separate subscription and reachable HTTPS.
+| Setting / option | Purpose |
+| --- | --- |
+| `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
+| `DATAFLOWS_WEBHOOK_TRIGGER_INPUTS` | Saved trigger selections reused on rerun; run `azd env set DATAFLOWS_WEBHOOK_TRIGGER_INPUTS=` then `azd hooks run postdeploy` to select again |
+| `AzureWebJobs.<FunctionName>.Disabled` | App setting written by setup; `true` for skipped triggers |
+
+Skipped triggers' subscriptions are disabled, not deleted. Subscriptions owned by other apps are never overwritten.
+
+## Local development
+
+1. Prepare `local.settings.json`.
+
+   `azd up` creates it with the `DataflowsConnection` runtime URL; existing files are preserved. Without a deployment, create it from the example and fill in the placeholder:
+
+   ```bash
+   npm run setup:local
+   ```
+
+2. Start Azurite in a separate terminal.
+
+   ```bash
+   azurite
+   ```
+
+3. Install, build, and start the local Functions host with authentication enabled.
+
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
+
+   Core Tools v4 bypasses local key authentication by default. Use `--enableAuth` before exposing the host through a public tunnel so callback requests must present the system key.
+
+4. Expose port 7071 over public HTTPS. Get the **local** `connector_extension` system key from Azurite's `azure-webjobs-secrets`, not the Azure Function App's key or a function key. Keep it private.
+
+5. In [Connector Namespaces](https://connectors.azure.com/), create a separate trigger configuration whose callback is `https://<tunnel-host>/runtime/webhooks/connector?functionName=<FunctionName>` with the local key as the `code` query parameter. The postdeploy hook only targets the deployed Function App, so do not retarget the deployed subscription.
+
+6. When finished, disable or delete the local trigger configuration.
+
+Never commit keys, callback URLs, or local settings.
 
 ## Verify
 
-Confirm the connection is `Connected` and the subscription is `Enabled` in [Connector Namespaces](https://connectors.azure.com/), then refresh the selected test dataflow. Inspect Function App logs for its name and status. Offline tests exercise the typed handler, not live service delivery.
+Check the connection is **Connected** and selected triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Refresh the selected dataflow, then check Function App logs for `<FunctionName> trigger received.`; build/deployment success alone is not real-event verification. Delivery is at least once and source detection may be delayed.
+
+Run `azd down --purge` when finished.
+
+## More
+
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Dataflows connector reference](https://learn.microsoft.com/connectors/dataflows/)

@@ -1,93 +1,102 @@
-# Microsoft Teams Connector Sample
+# Microsoft Teams Webhook Triggers (TypeScript)
 
-Azure Functions app demonstrating all Microsoft Teams triggers. Some triggers have named helpers in [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors); others do not. Use a named helper when available; otherwise, use the generic `connectorTrigger<T>` API. Handlers are in [src/functions](src/functions/).
+Azure Functions sample for the [Microsoft Teams connector](https://learn.microsoft.com/connectors/teams/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`: four use typed `connectors.teams.*` helpers and seven use the generic `connectorTrigger<T>` API. Handlers log `<FunctionName> trigger received.` followed by message, member, or event content, so use a test account.
 
-| Function | Registration API | Connector operation |
-| -------- | ------------------------------ | ------------------- |
-| [OnNewChannelMessage](src/functions/onNewChannelMessage.ts) | `connectors.teams.onNewChannelMessage` | `OnNewChannelMessage` |
-| [OnNewChannelMessageMentioningMe](src/functions/onNewChannelMessageMentioningMe.ts) | `connectors.teams.onNewChannelMessageMentioningMe` | `OnNewChannelMessageMentioningMe` |
-| [OnGroupMembershipAdd](src/functions/onGroupMembershipAdd.ts) | `connectors.teams.onTeamMemberAdded` | `OnGroupMembershipAdd` |
-| [OnGroupMembershipRemoval](src/functions/onGroupMembershipRemoval.ts) | `connectors.teams.onTeamMemberRemoved` | `OnGroupMembershipRemoval` |
-| [OnWebhookAtMention](src/functions/onWebhookAtMention.ts) | `connectorTrigger<T>` | `WebhookAtMentionTrigger` |
-| [OnWebhookMessageReaction](src/functions/onWebhookMessageReaction.ts) | `connectorTrigger<T>` | `WebhookMessageReactionTrigger` |
-| [OnTranscriptAvailable](src/functions/onTranscriptAvailable.ts) | `connectorTrigger<T>` | `TranscriptTrigger` |
-| [OnRecordingAvailable](src/functions/onRecordingAvailable.ts) | `connectorTrigger<T>` | `RecordingTrigger` |
-| [OnWebhookChatMessage](src/functions/onWebhookChatMessage.ts) | `connectorTrigger<T>` | `WebhookChatMessageTrigger` |
-| [OnWebhookKeyword](src/functions/onWebhookKeyword.ts) | `connectorTrigger<T>` | `WebhookKeywordTrigger` |
-| [OnWebhookNewMessage](src/functions/onWebhookNewMessage.ts) | `connectorTrigger<T>` | `WebhookNewMessageTrigger` |
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnNewChannelMessage` | [`OnNewChannelMessage`](https://learn.microsoft.com/connectors/teams/#when-a-new-channel-message-is-added) | New root channel message |
+| `OnNewChannelMessageMentioningMe` | [`OnNewChannelMessageMentioningMe`](https://learn.microsoft.com/connectors/teams/#when-i-am-mentioned-in-a-channel-message) | Channel message mentioning the connection user |
+| `OnGroupMembershipAdd` | [`OnGroupMembershipAdd`](https://learn.microsoft.com/connectors/teams/#when-a-new-team-member-is-added) | Team member added |
+| `OnGroupMembershipRemoval` | [`OnGroupMembershipRemoval`](https://learn.microsoft.com/connectors/teams/#when-a-new-team-member-is-removed) | Team member removed |
+| `OnWebhookChatMessage` | [`WebhookChatMessageTrigger`](https://learn.microsoft.com/connectors/teams/#when-a-new-chat-message-is-added) | New chat message (opt-in) |
+| `OnWebhookNewMessage` | [`WebhookNewMessageTrigger`](https://learn.microsoft.com/connectors/teams/#when-a-new-message-is-added-to-a-chat-or-channel) | New chat/channel message (opt-in) |
+| `OnWebhookAtMention` | [`WebhookAtMentionTrigger`](https://learn.microsoft.com/connectors/teams/#when-i'm-@mentioned) | @mention (opt-in) |
+| `OnWebhookKeyword` | [`WebhookKeywordTrigger`](https://learn.microsoft.com/connectors/teams/#when-keywords-are-mentioned) | Keyword mention (opt-in) |
+| `OnWebhookMessageReaction` | [`WebhookMessageReactionTrigger`](https://learn.microsoft.com/connectors/teams/#when-someone-reacted-to-a-message-in-chat) | Message reaction (opt-in) |
+| `OnRecordingAvailable` | [`RecordingTrigger`](https://learn.microsoft.com/connectors/teams/#when-a-recording-is-available) | Recording available (opt-in) |
+| `OnTranscriptAvailable` | [`TranscriptTrigger`](https://learn.microsoft.com/connectors/teams/#when-a-transcript-is-available) | Transcript available (opt-in) |
 
 ## Prerequisites
 
-Follow the [shared prerequisites](../../README.md#prerequisites). You also need a Microsoft Teams account with access to the team and channel, and permission to consent to the connector.
+- [Node.js](https://nodejs.org/) 24 or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell for the Windows hook (`postdeploy.ps1`), or Bash and `jq` for the macOS/Linux hook (`postdeploy.sh`)
+- A Teams account with team/channel access and permission to authorize the connection
+- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
 
-The interactive team/channel picker uses Microsoft Graph through your Azure CLI sign-in. If your tenant restricts that access, set the team and channel IDs in advance.
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
 ## Deploy to Azure
 
-Run from `teamsApp/webhook`:
-
-```sh
+```bash
+cd teamsApp/webhook
 az login
 azd auth login
+azd env new teams-webhook
+azd env set TEAMS_GROUP_ID "<team / Microsoft 365 group object ID>"
+azd env set TEAMS_CHANNEL_ID "<channel ID, e.g. 19:abcd...@thread.tacv2>"
 azd up
 ```
 
-The deployment builds the TypeScript app and runs the [postdeploy hook](azure.yaml). Both platform hooks follow this order:
+Complete the OAuth sign-in when the hook opens your browser, then choose **Configure** or **Skip** for each of the seven opt-in triggers and answer their connector picker prompts. The hook creates up to eleven trigger configurations with callbacks to the deployed Function App. Use a different azd environment from polling.
 
-1. Read saved team/channel IDs, or use the existing Microsoft Graph pickers and save your selections.
-2. Complete OAuth consent and wait for the Teams connection to become `Connected`.
-3. Use the shared [webhook setup](infra/scripts/setup-webhook-triggers.mjs) to configure or explicitly skip each of the seven additional triggers. Connector-backed pickers and free-form prompts run together in this stage, after authentication.
-4. Create the four original trigger configurations plus the additional ones you configured, up to eleven.
+## Optional configuration
 
-## Resources provisioned
+| Setting / option | Purpose |
+| --- | --- |
+| Omit `TEAMS_GROUP_ID` / `TEAMS_CHANNEL_ID` | Hook offers interactive Microsoft Graph team/channel pickers through your Azure CLI sign-in and saves the selection |
+| `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
+| `azd hooks run postdeploy` | Rerun consent and trigger registration without redeploying |
 
-- Flex Consumption Function App with a system-assigned managed identity.
-- Storage account, Application Insights, and Log Analytics workspace.
-- Connector Namespace and Microsoft Teams connection.
+Opt-in trigger inputs are collected on every hook run; only team/channel IDs are saved. Skipping a trigger omits its configuration for that run, but its handler still registers and existing configurations are not deleted. `OnWebhookChatMessage` monitors all chats of the connection user, and recording/transcript triggers need appropriate meeting licenses and policies.
 
-The Preview Functions Extension Bundle is already configured in [host.json](host.json).
+## Local development
 
-## Connector configuration
+1. Create `local.settings.json` from the example (an existing file is preserved).
 
-The hook saves your selections as `TEAMS_GROUP_ID` and `TEAMS_CHANNEL_ID` on the azd environment. To skip the picker, replace the values below with your team (Microsoft 365 group object ID) and channel IDs:
+   ```bash
+   npm run setup:local
+   ```
 
-```sh
-azd env set TEAMS_GROUP_ID "your-team-id"
-azd env set TEAMS_CHANNEL_ID "19:your-channel-id@thread.tacv2"
-```
+2. Start Azurite in a separate terminal.
 
-These settings do not skip any required OAuth consent. To repeat connection and trigger setup without redeploying:
+   ```bash
+   azurite
+   ```
 
-```sh
-azd hooks run postdeploy
-```
+3. Install dependencies, build, and start the local Functions host with authentication enabled.
 
-### Additional webhook inputs
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
 
-After OAuth consent, the postdeploy hook asks whether to configure or skip each additional trigger. For each trigger you configure, you are guided through a series of prompts specific to that connector operation. Depending on the operation, you select values from numbered lists or enter free-form text. The prompts may change based on your earlier selections, and required inputs must be provided before the trigger is created.
+   Core Tools v4 bypasses local key authentication by default. Use `--enableAuth` before exposing the host through a public tunnel so callback requests must present the system key.
 
-These operation-specific inputs are collected each time you rerun the hook; only the original team/channel selections are saved.
+4. Expose port 7071 over public HTTPS. Get the **local** `connector_extension` system key from Azurite's `azure-webjobs-secrets`, not the Azure Function App's key or a function key. Keep it private.
 
-Some choices require extra connector permissions or tenant access. Empty/failed picker responses, unavailable operations, or unsupported schemas stop setup rather than creating guessed configurations. Rerun the hook to retry or explicitly skip an unavailable trigger. Skipping a new trigger omits its configuration for that run; its handler still registers, and existing deployed configurations are not automatically deleted.
+5. The postdeploy hook only targets the deployed Function App. Register a **separate** trigger configuration with `az connector-namespace trigger create` whose callback is `https://<tunnel-host>/runtime/webhooks/connector?functionName=<FunctionName>`, authenticated with the local key as the `code` query parameter. Delete it with `az connector-namespace trigger delete` when finished.
+
+Functions host storage is required. Never commit keys, callback URLs, or local settings.
 
 ## Verify
 
-Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one Microsoft Teams connection in `Connected` state and eleven triggers in `Enabled` state if you configured all seven additional operations, or four plus the number you configured. The [example namespace overview](docs/connectors-namespace-overview-teams.png) predates the additional webhook examples.
+Check the connection is **Connected** and triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Post a new root channel message, not a reply, and look for `OnNewChannelMessage trigger received.` in logs. Opt-in triggers require their scoped source action and prerequisites. Allow upstream detection delays; delivery is at least once.
 
-Post a channel/chat message, mention the connected user, use a configured keyword or reaction, change team membership, or produce a transcript/recording in the selected scope. Then inspect the Function App logs in Application Insights. If the connection is unauthenticated or expected triggers are missing, rerun the hook and complete consent and setup.
-
-## Run locally
-
-Run `npm run setup:local`, then configure `local.settings.json` for your environment and start Azurite if using the default development storage setting:
-
-```sh
-npm install
-npm start
-```
-
-This builds the app and starts the Functions host. Receiving connector events locally also requires a reachable HTTPS callback and a separate trigger configuration targeting it; `npm start` does not create subscriptions.
+Run `azd down --purge` when finished to remove deployed resources.
 
 ## More
 
-- [Microsoft Teams connector operations](https://learn.microsoft.com/connectors/teams/)
-- [All TypeScript samples](../../README.md#samples)
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md#microsoft-teams-connector)
+- [Microsoft Teams connector reference](https://learn.microsoft.com/connectors/teams/)

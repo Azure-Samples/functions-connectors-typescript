@@ -1,42 +1,104 @@
-# SharePoint Online Connector Sample - Polling
+# SharePoint Online Polling Triggers (TypeScript)
 
-This is an independent Poll-only app; the [webhook app](../webhook/README.md) runs separately. No `EnablePollingSamples` flag is required. Function names and event processing are unchanged.
+Azure Functions sample for the [SharePoint Online connector](https://learn.microsoft.com/connectors/sharepointonline/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. Each function is in its own file under `src/functions/`, uses a typed `connectors.sharepoint` helper, and logs only the trigger name and item count (for example, `Received OnSharepointNewItems trigger (2 items).`).
 
-## Deploy and configure
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnSharepointNewFileItems` | [`GetOnNewFileItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-file-is-created-(properties-only)) | File created (properties only) |
+| `OnSharepointUpdatedFileItems` | [`GetOnUpdatedFileItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-file-is-created-or-modified-(properties-only)) | File created or modified (properties only) |
+| `OnSharepointNewItems` | [`GetOnNewItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-an-item-is-created) | Item created |
+| `OnSharepointUpdatedItems` | [`GetOnUpdatedItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-an-item-is-created-or-modified) | Item created or modified |
+| `OnSharepointChangedItems` | [`GetOnChangedItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-an-item-or-a-file-is-modified) | Item or file modified, not created |
+| `OnSharepointDeletedItems` | [`GetOnDeletedItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-an-item-is-deleted) | Item deleted (opt-in) |
+| `OnSharepointDeletedFileItems` | [`GetOnDeletedFileItems`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-file-is-deleted) | File deleted (opt-in) |
+| `OnSharepointNewItemsFromForm` | [`GetOnNewItemsFromForm`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-form-is-submitted-(preview)) | Form submitted (preview, opt-in) |
+| `OnSharepointUpdatedFileClassifiedTimes` | [`GetOnUpdatedFileClassifiedTimes`](https://learn.microsoft.com/connectors/sharepointonline/#when-a-file-is-classified-by-a-microsoft-syntex-model) | Microsoft Syntex classification (opt-in) |
+| `OnSharepointRecurrenceDigest` | [`GetOnRecurrenceDigest`](https://learn.microsoft.com/connectors/sharepointonline/#recurring-digest-of-updates-(preview)) | Recurring digest (preview, opt-in) |
 
-Run these commands from this folder, using a unique azd environment:
+## Prerequisites
 
-```sh
-npm ci
+- [Node.js](https://nodejs.org/) 24 or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell 7 on Windows, because azd runs the hooks with `pwsh` (the setup script itself is Node.js)
+- A SharePoint Online site and list or library, and permission to authorize the connection; deletion triggers require a site collection administrator, and classification requires a licensed Syntex model
+- For local development: [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite)
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
+
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
+
+## Deploy to Azure
+
+```bash
+cd sharepointApp/polling
 az login
-az extension add --name connector-namespace
 azd auth login
-azd env new <unique-polling-environment>
+azd env new sharepoint-polling
 azd up
 ```
 
-Bicep provisions this app's Function App, host storage, monitoring, Connector Namespace, connection, and connection access policies. The postdeploy hook handles authorization and source selection, creates enabled **Poll** trigger configurations, derives the endpoint from the service, and applies all Function App settings with managed-identity authentication. No webhook callback, connector extension key, or tunnel is needed.
+Use a different environment from the webhook sample. Complete OAuth consent in the browser opened by the hook, then answer the source prompts (for example **Site Address** and **List Name** or **Library Name**) using the connector's pickers. If a required picker returns no choices, that trigger is skipped; at least one trigger must be configured.
 
-This project's `azd up` runs packaging, provisioning, and deployment sequentially so the deployment progress display stops before interactive setup begins. Packaging no longer overlaps with provisioning. Running `azd deploy` directly still runs the same automatic setup.
+## Optional configuration
 
-Complete OAuth consent and source-selection prompts when requested. A new `local.settings.json` is created with the real endpoint/config names and local developer authentication; an existing file is never overwritten. See the [shared Poll deployment guide](../../README.md#polling-samples) for local testing and endpoint details.
+Set environment values with `azd env set <setting> <value>` before `azd up`.
 
-The hook saves source selections as `POLLING_TRIGGER_INPUTS` in this project's azd environment and reuses them on redeployment without replacing unchanged subscriptions. To change selections, run `azd env set POLLING_TRIGGER_INPUTS=`, then `azd hooks run postdeploy`. Deselected or skipped owned sources are disabled without losing their selectors. Other apps' and webhook configurations are never overwritten.
+| Setting / option | Purpose |
+| --- | --- |
+| `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
+| `POLLING_TRIGGER_INPUTS` | Saved source selections, reused on redeployment; clear it with `azd env set POLLING_TRIGGER_INPUTS=` to choose again |
+| `azd hooks run postdeploy` | Rerun consent, source selection, and trigger setup without redeploying |
 
-[The polling examples](src/functions/onSharepointPoll.ts) cover all ten non-deprecated operations listed in the [SharePoint sample overview](../README.md). Each Poll function adds `Poll` to its webhook function name, for example `OnSharepointNewItemsPoll`; its setting is `OnSharepointNewItemsPollTriggerConfigName`. The operation ID and source parameters are unchanged.
+The five create/update triggers are always configured. For each opt-in trigger, the hook prompts **Skip** or **Configure**; skipped triggers get `AzureWebJobs.<Function>.Disabled=true` and any existing configuration is disabled. Optional inputs such as **Folder** or **Limit Columns by View** can be skipped to use connector defaults. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
 
-After consent, the hook collects the actual `sharepointonline` site, list/library, and operation-specific selectors through connector metadata and authenticated pickers. Five create/update operations are enabled by default. Deletion, form submission, Syntex classification, and recurring digest sources are opt-in and require the corresponding account permissions.
+## Local development
 
-For example, setup asks for **Site Address**, then **List Name** or **Library Name**. Form-submission triggers also ask for **Form Name**, while recurring digests ask whether to include edits/new items and **When to run**. Optional prompts include **Folder** and **Limit Columns by View**.
+If the Function App is already deployed, stop it before running locally; listeners sharing a trigger configuration compete for events.
 
-If a list-only picker returns no choices, the hook asks you to enter the SharePoint list name manually. Leave it blank to skip that trigger. If any other required picker returns no choices (including Site Address, Library Name, Form Name, or When to run), the hook prints a notice, skips that trigger, and continues configuring the others. It never guesses identifiers or substitutes a library for a list. A form trigger needs an available form for the selected list/library; selecting Documents alone does not guarantee one exists.
+1. Prepare `local.settings.json`.
 
-Optional inputs can be skipped to use connector defaults. If an optional picker returns no choices, the hook prints a notice and leaves that filter unset: no view means all columns, and no folder filter means the whole selected list/library. Failed lookups and malformed responses still stop setup before any trigger configurations or listener settings are changed. At least one trigger must be configured; if all are skipped, setup fails without saving selections or changing existing sources.
+   Use the ignored file generated during `azd up`, which contains the polling endpoint, trigger configuration names, and disabled-function flags. An existing file is preserved. Only if the file is missing, rerun setup:
 
-Optional Folder inputs browse the site's libraries and nested folders. Choose `Use <folder path>` to select the current folder, `Parent folder` to go back, or `No folder filter (whole library)` to omit the filter.
+   ```bash
+   azd hooks run postdeploy
+   ```
 
-The hook manages listener settings through `AzureWebJobs.<FunctionName>.Disabled`, retaining config-name settings even for disabled listeners. Existing `SHAREPOINT_*` webhook options do not control this independent app. Handlers log only receipt and item count. Verify source registration, then generate an event in the selected list/library.
+2. Sign in as a developer with access to the connection, and start Azurite in a separate terminal:
 
-## Validate
+   ```bash
+   az login
+   azurite
+   ```
 
-Run `npm test` for offline tests. Start Azurite if using development storage, then run `npm start`. Verify that the connection is Connected, Poll configs are Enabled, and source registration succeeded before generating events. Stop the Azure listener or use separate Poll configs when testing locally; listeners sharing a config compete for events.
+3. Install, build, and start the local host:
+
+   ```bash
+   npm ci
+   npm run build
+   func start
+   ```
+
+Local runs use developer credentials; do not copy the deployed managed-identity settings locally.
+
+## Verify
+
+Check the connection is **Connected** and the selected triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Create, then modify, a file or item in the selected list or library, and look for `Received <FunctionName> trigger (<Count> items).` in the function logs or Application Insights. Allow time for source polling; optional triggers require their corresponding source action. Delivery is at least once, so production handlers should be idempotent.
+
+To remove the Azure resources from this folder:
+
+```bash
+azd down --purge
+```
+
+## More
+
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [SharePoint Online connector reference](https://learn.microsoft.com/connectors/sharepointonline/)

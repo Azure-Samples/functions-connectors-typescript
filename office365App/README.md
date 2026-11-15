@@ -1,8 +1,10 @@
-# Office 365 Outlook Connector Sample
+# Office 365 Outlook Connector Samples (TypeScript)
 
-Choose an independent Azure Functions app:
+Choose how the Connector Namespace delivers events to Azure Functions:
 
-- [Webhook](webhook/README.md)
-- [Polling](polling/README.md)
+| Sample | Delivery | Local development |
+| --- | --- | --- |
+| [Polling](polling/) | Functions polls the Connector Namespace | Outbound only; no tunnel |
+| [Webhook](webhook/) | Namespace calls the HTTPS callback | Public HTTPS tunnel |
 
-Each app has its own dependencies, source, host configuration, Bicep, and setup scripts. Run `npm ci`, `npm test`, and `azd up` from the chosen subfolder, using a distinct azd environment for each app.
+Samples for [Office 365 Outlook connector](https://learn.microsoft.com/connectors/office365/) email and calendar triggers. See each sample's README for setup and supported triggers.

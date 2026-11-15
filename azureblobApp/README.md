@@ -1,8 +1,10 @@
-# Azure Blob Storage Connector Sample
+# Azure Blob Storage Connector Samples (TypeScript)
 
-Choose an independent Azure Functions app:
+Choose how the Connector Namespace delivers events to Azure Functions:
 
-- [Webhook](webhook/README.md)
-- [Polling](polling/README.md)
+| Sample | Delivery | Local development |
+| --- | --- | --- |
+| [Polling](polling/README.md) | Functions polls the Connector Namespace | Outbound only; no tunnel |
+| [Webhook](webhook/README.md) | Namespace calls the HTTPS callback | Public HTTPS tunnel |
 
-Each app has its own dependencies, source, host configuration, Bicep, and setup scripts. Run `npm ci`, `npm test`, and `azd up` from the chosen subfolder, using a distinct azd environment for each app. Existing parent-folder `.azure` environments are not moved or reused automatically.
+Samples for the [Azure Blob Storage](https://learn.microsoft.com/connectors/azureblob/) blob added or modified trigger. Each folder is an independent app; deploy each with a different azd environment.

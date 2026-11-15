@@ -1,96 +1,98 @@
-# Salesforce Connector Sample
+# Salesforce Webhook Triggers (TypeScript)
 
-Azure Functions app covering both `connectors.salesforce` helpers.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). It handles [Salesforce connector](https://learn.microsoft.com/connectors/salesforce/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by each record as JSON, so use sandbox or test records.
 
-| Function | Helper | Connector operation | Required parameters |
-| -------- | ------ | ------------------- | ------------------- |
-| [OnSalesforceNewItems](src/functions/onSalesforceNewItems.ts) | `onNewItems` | `GetOnNewItems` | `table` |
-| [OnSalesforceUpdatedItems](src/functions/onSalesforceUpdatedItems.ts) | `onUpdatedItems` | `GetOnUpdatedItems` | `table` |
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnSalesforceNewItems` | [`GetOnNewItems`](https://learn.microsoft.com/connectors/salesforce/#when-a-record-is-created) | Record created in the selected object |
+| `OnSalesforceUpdatedItems` | [`GetOnUpdatedItems`](https://learn.microsoft.com/connectors/salesforce/#when-a-record-is-modified) | Record modified in the selected object |
 
-Handlers use `SalesforceRecordTriggerContext.records`, typed as SDK `SalesforceItem[]`. They log whole records as JSON, preserving `dynamicProperties` and any raw callback fields without fabricating a fixed Salesforce object schema. The original payload is returned unchanged. Use a sandbox or test records because dynamic fields may contain sensitive information.
+## Prerequisites
 
-## Prerequisites and local development
+- [Node.js 24](https://nodejs.org/) or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- A Salesforce account (sandbox recommended) with access to the selected object, and permission to authorize the connection
+- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
 
-Follow the [shared prerequisites](../../README.md#prerequisites), including Node.js 24+. Live events require a Salesforce account and connector permissions for the selected object.
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
 
-From this folder:
+  Or in PowerShell:
 
-```sh
-npm ci
-npm test
-npm start
-```
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
-Run `npm run setup:local`, then configure `local.settings.json` without committing credentials, and run Azurite for development storage. Local callbacks require reachable HTTPS and separate subscriptions; starting the host does not create them.
+## Deploy to Azure
 
-## Deploy and configure
-
-The self-contained [infra/main.bicep](infra/main.bicep) template provisions a Node.js 24 Flex Consumption Function App, host storage, monitoring, a Connector Namespace, a `salesforce` connection, and access policies for the namespace, Function App, and deployer.
-
-```sh
+```bash
+cd salesforceApp/webhook
 az login
-az extension add --name connector-namespace
 azd auth login
-azd env new <unique-salesforce-webhook-environment>
+azd env new salesforce-webhook
 azd up
 ```
 
-Packaging, provisioning, and deployment run sequentially before the interactive postdeploy hook. The connection uses the connector's **Login with Salesforce Account** OAuth mode (`BasicAuthentication` is its metadata name, not a username/password flow). The login URI defaults to Salesforce Production. If needed, the hook runs `az connector-namespace connection authenticate`; complete browser consent and keep the terminal open. The CLI extension must support that command.
+Complete the **Login with Salesforce Account** OAuth sign-in opened by `azd up`; the login URI defaults to Salesforce Production. Setup asks for the Salesforce object for each trigger. Configure or skip each trigger when prompted; at least one trigger must be configured. If setup fails or is interrupted, run `azd hooks run postdeploy` to retry without redeploying.
 
-After verifying `Connected`, setup lets you configure or skip each trigger and asks only for required selectors, such as Salesforce Object Type. Optional filters use defaults or remain unset. An empty usable picker allows manual API-name entry; leave blank to skip the trigger. Choose an object that supports the trigger, as described below.
+Choose an object that supports the trigger: the picker can list similar labels with different API names (for example **Accounts** is `Account`, while **Account** may be the Data Cloud object `ssot__Account__dlm`, which lacks `CreatedDate` and fails). If a deployment upload fails with storage `403`, wait a few minutes and run `azd deploy` again.
 
-During consent, the terminal checks Azure connection status every 10 seconds. A browser popup that stays open is not proof of failure: wait for **authentication confirmed: Azure connection is Connected**, then close the sign-in windows and continue in the terminal. Setup does not wait for a missing browser redirect once Azure confirms the connection. If setup failed or was interrupted, run `azd hooks run postdeploy` to retry without redeploying.
+## Optional configuration
 
-The hook retrieves the extension key securely, creates selected webhook subscriptions, and sets `SalesforceConnection` and listener-enabled settings. It saves selections in `SALESFORCE_WEBHOOK_TRIGGER_INPUTS` and reuses unchanged subscriptions. To select again, run `azd env set SALESFORCE_WEBHOOK_TRIGGER_INPUTS=`, then `azd hooks run postdeploy`. Skipped owned subscriptions are disabled without deleting them or changing selectors; all-skipped setup stops before changes. Poll and other apps' subscriptions are protected.
+Set environment values before `azd up`.
 
-A fresh `local.settings.json` receives the runtime URL; existing local settings are preserved. Local callbacks still need a separate subscription and reachable HTTPS.
+| Setting / option | Purpose |
+| --- | --- |
+| `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
+| `SALESFORCE_WEBHOOK_TRIGGER_INPUTS` | Saved trigger selections reused on rerun; run `azd env set SALESFORCE_WEBHOOK_TRIGGER_INPUTS=` then `azd hooks run postdeploy` to select again |
+| `AzureWebJobs.<FunctionName>.Disabled` | App setting written by setup; `true` for skipped triggers |
+
+Skipped triggers' subscriptions are disabled, not deleted. Subscriptions owned by other apps are never overwritten.
+
+## Local development
+
+1. Prepare `local.settings.json`.
+
+   `azd up` creates it with the `SalesforceConnection` runtime URL; existing files are preserved. Without a deployment, create it from the example and fill in the placeholder:
+
+   ```bash
+   npm run setup:local
+   ```
+
+2. Start Azurite in a separate terminal.
+
+   ```bash
+   azurite
+   ```
+
+3. Install, build, and start the local Functions host with authentication enabled.
+
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
+
+   Core Tools v4 bypasses local key authentication by default. Use `--enableAuth` before exposing the host through a public tunnel so callback requests must present the system key.
+
+4. Expose port 7071 over public HTTPS. Get the **local** `connector_extension` system key from Azurite's `azure-webjobs-secrets`, not the Azure Function App's key or a function key. Keep it private.
+
+5. In [Connector Namespaces](https://connectors.azure.com/), create a separate trigger configuration whose callback is `https://<tunnel-host>/runtime/webhooks/connector?functionName=<FunctionName>` with the local key as the `code` query parameter. The postdeploy hook only targets the deployed Function App, so do not retarget the deployed subscription.
+
+6. When finished, disable or delete the local trigger configuration.
+
+Never commit keys, callback URLs, or local settings.
 
 ## Verify
 
-Confirm the connection is `Connected` and the desired subscriptions are `Enabled` in [Connector Namespaces](https://connectors.azure.com/). Create or modify a sandbox record in the selected object, then inspect Function App logs. Offline tests exercise typed dynamic records, not live delivery or Salesforce permissions.
+Check the connection is **Connected** and selected triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Create or modify a test record in the selected object, then check Function App logs for `<FunctionName> trigger received.`; build/deployment success alone is not real-event verification. Delivery is at least once and source detection may be delayed.
 
-## Troubleshooting
+Run `azd down --purge` when finished.
 
-### Deployment upload fails with storage 403
+## More
 
-If provisioning succeeds but publishing fails with `BlobUploadFailedException`
-and storage returns `403 (This request is not authorized to perform this operation using this permission.)`,
-wait a few minutes and retry deployment from this folder using the same azd environment:
-
-```sh
-azd deploy
-```
-
-A deployment-only retry resolved this error during sample testing without
-source or permission changes. Newly assigned storage permissions can take time
-to propagate, but the error alone does not confirm that cause. You do not need
-to recreate the resources or configure Salesforce OAuth again for this upload
-failure. If it persists, check the deployment storage permissions and network
-restrictions rather than repeatedly retrying or enabling storage account keys.
-
-### Trigger fails because the selected object is missing a required field
-
-The Salesforce object picker can list objects with similar display names but
-different API names and fields. Appearing in the picker does not guarantee that
-an object supports the selected trigger. For example, **When a record is
-created** queries `CreatedDate`; selecting an object without that field causes
-the trigger to fail before events reach your Function App, even when the
-connection is `Connected`.
-
-Accounts are one example of this issue; other objects may have similarly
-confusing labels. During testing, the picker returned:
-
-| Picker label | Object API name | Object type |
-| --- | --- | --- |
-| Accounts | `Account` | Standard CRM object |
-| Account | `ssot__Account__dlm` | Data Cloud object |
-
-Selecting **Account** caused the trigger to fail with
-`No such column 'CreatedDate' on entity 'ssot__Account__dlm'`. For standard CRM
-accounts, select **Accounts** instead. Labels may differ in your Salesforce
-environment.
-
-If you encounter a missing-field error, check the trigger's failure details and
-confirm that the selected object contains the required field and is the object
-where you create your test records. After correcting the selection, verify that
-the trigger is healthy, then create a new test record.
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Salesforce connector reference](https://learn.microsoft.com/connectors/salesforce/)

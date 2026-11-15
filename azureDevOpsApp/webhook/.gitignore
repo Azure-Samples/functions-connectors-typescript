@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.azure/
+*.env
+local.settings.json
+local.settings.json.bak
+__azurite_db_*.json
+__blobstorage__/
+__queuestorage__/

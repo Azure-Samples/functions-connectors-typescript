@@ -2,19 +2,19 @@
     "connectorName": "onedriveforbusiness",
     "triggers": [
         {
-            "functionName": "OnOneDriveNewFilePoll",
+            "functionName": "OnOneDriveNewFile",
             "operationName": "OnNewFilesV2"
         },
         {
-            "functionName": "OnOneDriveUpdatedFilePoll",
+            "functionName": "OnOneDriveUpdatedFile",
             "operationName": "OnUpdatedFilesV2"
         },
         {
-            "functionName": "OnOneDriveNewFileContentPoll",
+            "functionName": "OnOneDriveNewFileContent",
             "operationName": "OnNewFileV2"
         },
         {
-            "functionName": "OnOneDriveUpdatedFileContentPoll",
+            "functionName": "OnOneDriveUpdatedFileContent",
             "operationName": "OnUpdatedFileV2"
         }
     ]
