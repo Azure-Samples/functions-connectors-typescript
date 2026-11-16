@@ -235,7 +235,7 @@ function az(args) {
     // not interpolated PowerShell/cmd source; JSON request bodies use @files.
     const result = process.platform === 'win32'
         ? spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-            '& az @($env:TEAMS_SETUP_ARGS | ConvertFrom-Json); exit $LASTEXITCODE'], {
+            "$ErrorActionPreference = 'Stop'; $setupArgs = @($env:TEAMS_SETUP_ARGS | ConvertFrom-Json); & az @setupArgs; exit $LASTEXITCODE"], {
             encoding: 'utf8', env: { ...process.env, TEAMS_SETUP_ARGS: JSON.stringify(args) }, maxBuffer: 32 * 1024 * 1024, timeout: 120_000,
         })
         : spawnSync('az', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 120_000 });

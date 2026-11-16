@@ -3,7 +3,7 @@
 
 // ----------------------------------------------------------------------------
 // Subscription-scoped entrypoint used by `azd up`.
-// Creates the resource group and delegates to resources.bicep.
+// Creates the resource group, connector namespace, and source resources.
 // ----------------------------------------------------------------------------
 
 targetScope = 'subscription'
@@ -27,34 +27,16 @@ param connectorNamespaceLocation string = 'brazilsouth'
 })
 param userPrincipalId string = deployer().objectId
 
-@description('Connector runtime URL (e.g. https://<connection-name>-<gateway>.azureconnectors.com). Optional at provisioning time; configure later as app setting.')
-param connectorRuntimeUrl string = ''
-
-@description('Connector OAuth access token. Optional at provisioning time; configure later as app setting or rotate via Key Vault.')
-@secure()
-param connectorToken string = ''
-
 var tags = {
   'azd-env-name': environmentName
 }
+var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
+var functionAppName = 'func-${environmentName}-${resourceToken}'
 
 resource resourceGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: 'rg-${environmentName}'
   location: location
   tags: tags
-}
-
-module resources 'resources.bicep' = {
-  scope: resourceGroup
-  name: 'resources'
-  params: {
-    location: location
-    environmentName: environmentName
-    tags: tags
-    connectorRuntimeUrl: connectorRuntimeUrl
-    connectorToken: connectorToken
-    userPrincipalId: userPrincipalId
-  }
 }
 
 module connectorNamespace 'connectorNamespace.bicep' = {
@@ -65,17 +47,15 @@ module connectorNamespace 'connectorNamespace.bicep' = {
     location: connectorNamespaceLocation
     tags: tags
     connectorName: loadJsonContent('scripts/polling-config.json').connectorName
-    functionAppPrincipalId: resources.outputs.functionAppPrincipalId
     userPrincipalId: userPrincipalId
   }
 }
 
 output AZURE_LOCATION string = location
 output AZURE_RESOURCE_GROUP string = resourceGroup.name
-output FUNCTION_APP_NAME string = resources.outputs.functionAppName
-output FUNCTION_APP_HOSTNAME string = resources.outputs.functionAppHostname
+output FUNCTION_APP_NAME string = functionAppName
 output resourceGroupName string = resourceGroup.name
-output functionAppName string = resources.outputs.functionAppName
+output functionAppName string = functionAppName
 output connectorNamespaceName string = connectorNamespace.outputs.name
 output connectorNamespaceResourceId string = connectorNamespace.outputs.resourceId
 output connectorNamespaceConnectionName string = connectorNamespace.outputs.connectionName

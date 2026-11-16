@@ -21,8 +21,9 @@ Azure Functions sample for the [Microsoft Teams connector](https://learn.microso
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 24 or later
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.33.0 or later
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later, signed in with permission to read and write trigger configurations in the Connector Namespace
+- PowerShell 7 (`pwsh`) on Windows, used by the `azd` hooks
 - A Teams account with team/channel access and permission to authorize the connection
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
 - [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
@@ -47,18 +48,18 @@ azd env new teams-polling
 azd up
 ```
 
-Run `azd up` in an interactive terminal: the postdeploy hook (`node ./infra/scripts/postdeploy.mjs`) opens the OAuth sign-in, then collects the team, channel, and operation-specific inputs through live connector pickers. Use a different azd environment from webhook.
+Run `azd up` in an interactive terminal: setup opens the OAuth sign-in, then collects the team, channel, and operation-specific inputs through live connector pickers. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. Use a different azd environment from webhook.
 
 ## Optional configuration
 
 | Setting / option | Purpose |
 | --- | --- |
 | `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
-| Opt-in trigger prompts | Choose **Skip** or **Configure** for each of the seven RAW triggers during postdeploy |
-| `azd env set POLLING_TRIGGER_INPUTS ""` then `azd hooks run postdeploy` | Clear saved trigger selections and inputs and prompt again |
-| `azd hooks run postdeploy` | Rerun consent and trigger setup without redeploying |
+| Opt-in trigger prompts | Choose **Skip** or **Configure** for each of the seven RAW triggers during setup |
+| `azd env set POLLING_TRIGGER_INPUTS=` then `azd provision triggers` | Clear saved trigger selections and inputs and prompt again |
+| `azd provision triggers` | Rerun consent and trigger setup without reprovisioning base resources; then run `azd provision app` and `azd deploy` |
 
-The four typed triggers are always configured. For the seven opt-in triggers, postdeploy writes `AzureWebJobs.<Function>.Disabled` to the Function App settings and new local settings, so unselected listeners stay disabled; deselected sample-owned Poll configurations are disabled, not deleted. `OnWebhookChatMessage` monitors all chats of the connection user, and recording/transcript triggers need appropriate meeting licenses and policies. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+The four typed triggers are always configured. Function App infrastructure sets `AzureWebJobs.<Function>.Disabled`, and new local settings contain the same flags, so unselected listeners stay disabled; deselected sample-owned Poll configurations are disabled, not deleted. `OnWebhookChatMessage` monitors all chats of the connection user, and recording/transcript triggers need appropriate meeting licenses and policies. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
 
 ## Local development
 
@@ -69,7 +70,7 @@ If the Function App is already deployed, stop it before running locally to avoid
    Use the file generated during successful `azd up`; an existing file is never overwritten. Only if it is missing, rerun:
 
    ```bash
-   azd hooks run postdeploy
+   azd hooks run predeploy
    ```
 
 2. Sign in with your developer account for local credentials.

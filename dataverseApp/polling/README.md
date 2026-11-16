@@ -17,7 +17,7 @@ The connector is [Microsoft Dataverse (`commondataservice`)](https://learn.micro
 ## Prerequisites
 
 - [Node.js 24](https://nodejs.org/) or later
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.33.0 or later
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
 - PowerShell 7 (`pwsh`) on Windows, used by the `azd` hooks in `azure.yaml`
 - A Dataverse environment and an account permitted to register organization-scoped events
@@ -42,7 +42,7 @@ azd env new dataverse-polling
 azd up
 ```
 
-Complete the Dataverse OAuth sign-in in your browser when prompted, then answer the environment, table, scope, and action pickers in the terminal. Use a different azd environment from the webhook sample. To retry an interrupted setup without redeploying, run `azd hooks run postdeploy`.
+Complete the Dataverse OAuth sign-in in your browser when prompted, then answer the environment, table, scope, and action pickers in the terminal. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. Use a different azd environment from the webhook sample. To retry an interrupted trigger setup, run `azd provision triggers`, `azd provision app`, and `azd deploy`.
 
 ## Optional configuration
 
@@ -50,11 +50,11 @@ Complete the Dataverse OAuth sign-in in your browser when prompted, then answer 
 | --- | --- |
 | `AZURE_LOCATION` | Function App region; prompted if unset |
 | `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
-| `POLLING_TRIGGER_INPUTS` | Saved trigger selections, reused on reruns; clear with `azd env set POLLING_TRIGGER_INPUTS=` and rerun `azd hooks run postdeploy` to select again |
+| `POLLING_TRIGGER_INPUTS` | Saved trigger selections, reused on reruns; clear with `azd env set POLLING_TRIGGER_INPUTS=` and rerun `azd provision triggers` to select again |
 | `<Function>TriggerConfigName` | Trigger configuration name per function (see `local.settings.example.json`) |
-| `AzureWebJobs.<Function>.Disabled` | Written by postdeploy; `true` for skipped triggers |
+| `AzureWebJobs.<Function>.Disabled` | Set in Function App infrastructure; `true` for skipped triggers |
 
-The postdeploy hook prompts only for required selectors. If a picker returns no choices, enter the actual connector identifier, or leave it blank to skip that trigger; skipped functions are disabled. Action-performed needs a real catalog, category, table, and action available to the signed-in user.
+Setup prompts only for required selectors. If a picker returns no choices, enter the actual connector identifier, or leave it blank to skip that trigger; skipped functions and any existing sample-owned trigger configurations are disabled. Run `azd provision app` and `azd deploy` after changing selections. Action-performed needs a real catalog, category, table, and action available to the signed-in user.
 
 ## Local development
 

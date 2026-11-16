@@ -18,7 +18,7 @@ Azure Functions sample for the [SharePoint Online connector](https://learn.micro
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 24 or later
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.33.0 or later
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
 - PowerShell 7 on Windows, because azd runs the hooks with `pwsh` (the setup script itself is Node.js)
 - A SharePoint Online site and list or library, and permission to authorize the connection; deletion triggers require a site collection administrator, and classification requires a licensed Syntex model
@@ -45,7 +45,7 @@ azd env new sharepoint-polling
 azd up
 ```
 
-Use a different environment from the webhook sample. Complete OAuth consent in the browser opened by the hook, then answer the source prompts (for example **Site Address** and **List Name** or **Library Name**) using the connector's pickers. If a required picker returns no choices, that trigger is skipped; at least one trigger must be configured.
+Use a different environment from the webhook sample. Complete OAuth consent in the browser opened by setup, then answer the source prompts (for example **Site Address** and **List Name** or **Library Name**) using the connector's pickers. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. If a required picker returns no choices, that trigger is skipped; at least one trigger must be configured.
 
 ## Optional configuration
 
@@ -55,9 +55,9 @@ Set environment values with `azd env set <setting> <value>` before `azd up`.
 | --- | --- |
 | `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
 | `POLLING_TRIGGER_INPUTS` | Saved source selections, reused on redeployment; clear it with `azd env set POLLING_TRIGGER_INPUTS=` to choose again |
-| `azd hooks run postdeploy` | Rerun consent, source selection, and trigger setup without redeploying |
+| `azd provision triggers` | Rerun consent, source selection, and trigger setup without reprovisioning base resources; then run `azd provision app` and `azd deploy` |
 
-The five create/update triggers are always configured. For each opt-in trigger, the hook prompts **Skip** or **Configure**; skipped triggers get `AzureWebJobs.<Function>.Disabled=true` and any existing configuration is disabled. Optional inputs such as **Folder** or **Limit Columns by View** can be skipped to use connector defaults. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+Setup attempts to configure the five create/update triggers. For each opt-in trigger, it prompts **Skip** or **Configure**; skipped triggers get `AzureWebJobs.<Function>.Disabled=true` and any existing configuration is disabled. Optional inputs such as **Folder** or **Limit Columns by View** can be skipped to use connector defaults. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
 
 ## Local development
 
@@ -68,7 +68,7 @@ If the Function App is already deployed, stop it before running locally; listene
    Use the ignored file generated during `azd up`, which contains the polling endpoint, trigger configuration names, and disabled-function flags. An existing file is preserved. Only if the file is missing, rerun setup:
 
    ```bash
-   azd hooks run postdeploy
+   azd hooks run predeploy
    ```
 
 2. Sign in as a developer with access to the connection, and start Azurite in a separate terminal:

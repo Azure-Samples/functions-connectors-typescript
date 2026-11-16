@@ -19,14 +19,13 @@ $connectorNamespaceName   = $outputs.connectorNamespaceName
 $azureblobConnectionName  = $outputs.azureblobConnectionName
 $functionAppName          = $outputs.functionAppName
 $namespaceLocation        = $outputs.CONNECTOR_NAMESPACE_LOCATION
-$namespacePrincipalId     = $outputs.connectorNamespacePrincipalId
 $accountInput             = $outputs.monitoredStorageAccountName
 $containerInput           = $outputs.monitoredContainerName
 $functionAppPrincipalId   = $outputs.functionAppPrincipalId
 $userPrincipalId          = $outputs.AZURE_PRINCIPAL_ID
 $tenantId                 = az account show --query tenantId -o tsv
 
-if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $azureblobConnectionName -or -not $functionAppName -or -not $namespaceLocation -or -not $namespacePrincipalId -or -not $accountInput -or -not $containerInput) {
+if (-not $resourceGroupName -or -not $connectorNamespaceName -or -not $azureblobConnectionName -or -not $functionAppName -or -not $namespaceLocation -or -not $accountInput -or -not $containerInput) {
     Write-Host "ERROR: required azd outputs missing. Run 'azd provision' first." -ForegroundColor Red
     exit 1
 }
@@ -167,7 +166,6 @@ function Set-ConnectionAccessPolicy {
     }
 }
 
-Set-ConnectionAccessPolicy -PolicyName 'namespace-msi' -ObjectId $namespacePrincipalId | Out-Null
 if ($functionAppPrincipalId) {
     Write-Host "-> Granting function-app managed identity access to the connection..." -ForegroundColor Cyan
     Set-ConnectionAccessPolicy -PolicyName 'functionapp-msi' -ObjectId $functionAppPrincipalId | Out-Null

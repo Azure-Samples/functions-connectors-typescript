@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import { spawn, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -59,6 +60,15 @@ function assertOwned(existing, expected) {
     }
 }
 
+function matchesSelection(resource, expected) {
+    const properties = resource?.properties;
+    const ordered = (parameters) => [...(parameters ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+    return properties?.state === 'Enabled'
+        && !['Failed', 'Canceled', 'Cancelled'].includes(properties.provisioningState)
+        && Boolean(properties.pollingEndpoints?.receiveUri)
+        && isDeepStrictEqual(ordered(properties.parameters), ordered(expected.parameters));
+}
+
 export async function selectOneDriveFolder({ request, choose }) {
     const stack = [];
     while (true) {
@@ -83,9 +93,10 @@ export async function selectOneDriveFolder({ request, choose }) {
 }
 
 export async function setupPolling({
-    config, example, outputs, run, choose, prompt,
+    phase, config, example, outputs, run, choose, prompt,
     wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), log = console.log,
 }) {
+    if (!['prepare', 'verify', 'finish'].includes(phase)) throw new Error('Specify the prepare, verify, or finish polling setup phase.');
     for (const key of ['resourceGroupName', 'functionAppName', 'connectorNamespaceName',
         'connectorNamespaceResourceId', 'connectorNamespaceConnectionName', 'CONNECTOR_NAMESPACE_LOCATION']) {
         if (!outputs[key]) throw new Error(`Missing azd output ${key}. Run azd provision first.`);
@@ -114,6 +125,9 @@ export async function setupPolling({
         const ready = () => config.connectorName === 'azureblob'
             ? ['connected', 'ready'].includes(connection.properties?.overallStatus?.toLowerCase())
             : connection.properties?.overallStatus?.toLowerCase() === 'connected';
+        if (!ready() && phase !== 'prepare') {
+            throw new Error('The connection is no longer authorized. Complete consent and rerun azd provision triggers.');
+        }
         if (!ready() && config.connectorName !== 'azureblob') {
             log(`Azure resources are deployed. Completing ${config.connectorName} OAuth in your normal browser.`);
             log('Click Continue on the local sign-in page and complete consent. This terminal checks Azure every 10 seconds and reports when authentication is confirmed, even if the browser window does not update.');
@@ -135,24 +149,26 @@ export async function setupPolling({
                     },
                 });
             } catch (error) {
-                throw new Error('Connection authentication failed; Azure resources are already deployed. Resolve the browser or CLI error above, then rerun azd hooks run postdeploy. This requires a connector-namespace extension with connection authenticate support.', { cause: error });
+                throw new Error('Connection authentication failed; Azure resources are already deployed. Resolve the browser or CLI error above, then rerun azd provision triggers. This requires a connector-namespace extension with connection authenticate support.', { cause: error });
             }
             connection = await rest('GET', connectionUrl);
             if (!ready()) {
                 const errors = [...new Set((connection.properties?.statuses ?? []).map((status) => status.error?.code).filter(Boolean))];
-                throw new Error(`Connection is not Connected after authentication (status: ${connection.properties?.overallStatus ?? 'Unknown'}${errors.length ? `; ${errors.join(', ')}` : ''}). Azure resources are already deployed; resolve consent and rerun azd hooks run postdeploy.`);
+                throw new Error(`Connection is not Connected after authentication (status: ${connection.properties?.overallStatus ?? 'Unknown'}${errors.length ? `; ${errors.join(', ')}` : ''}). Azure resources are already deployed; resolve consent and rerun azd provision triggers.`);
             }
         }
         for (let attempt = 0; !ready() && attempt < 100; attempt++) {
             await wait(3000);
             connection = await rest('GET', connectionUrl);
         }
-        if (!ready()) throw new Error('Timed out waiting for connection authorization. Rerun azd hooks run postdeploy after completing consent.');
-        log(`${config.connectorName} authentication confirmed: Azure connection is Connected. You can close the sign-in windows. Continuing with trigger setup.`);
+        if (!ready()) throw new Error('Timed out waiting for connection authorization. Complete consent and rerun azd provision triggers.');
+        if (phase === 'prepare') log(`${config.connectorName} authentication confirmed: Azure connection is Connected. You can close the sign-in windows. Continuing with trigger setup.`);
 
         let triggers;
         if (outputs.POLLING_TRIGGER_INPUTS) {
             triggers = JSON.parse(Buffer.from(outputs.POLLING_TRIGGER_INPUTS, 'base64').toString('utf8'));
+        } else if (phase !== 'prepare') {
+            throw new Error('Missing selected Poll inputs. Rerun azd provision triggers.');
         } else {
             let swagger;
             const cache = new Map();
@@ -240,45 +256,79 @@ export async function setupPolling({
             if (resource) assertOwned(resource, properties);
             return { definition, trigger, setting, name, properties, resource };
         });
-        // Base64 avoids JSON quoting differences in Windows' azd.cmd shim.
-        await run('azd', ['env', 'set', 'POLLING_TRIGGER_INPUTS', Buffer.from(JSON.stringify(triggers)).toString('base64')]);
-        const localValues = {};
+        if (new Set(plan.map((item) => item.name)).size !== plan.length) {
+            throw new Error('Each Poll listener must use a distinct trigger config name.');
+        }
+        const listenerSettings = {};
+        for (const { definition, trigger, setting, name } of plan) {
+            listenerSettings[setting] = name;
+            listenerSettings[`AzureWebJobs.${definition.functionName}.Disabled`] = String(!trigger);
+        }
+        if (phase === 'prepare') {
+            for (const { trigger, name, properties, resource } of plan) {
+                if (trigger || !resource || resource.properties.state === 'Disabled') continue;
+                const url = `${root}/triggerConfigs/${encodeURIComponent(name)}`;
+                const current = await rest('GET', url);
+                assertOwned(current, properties);
+                if (current.properties.state === 'Disabled') continue;
+                const { pollingEndpoints, provisioningState, ...preserved } = current.properties;
+                await rest('PUT', url, { properties: { ...preserved, state: 'Disabled' } });
+                const disabled = await rest('GET', url);
+                if (disabled.properties?.state !== 'Disabled') throw new Error(`Could not disable skipped Poll config ${name}.`);
+                log(`Disabled skipped Poll config ${name}.`);
+            }
+            const changed = plan.filter((item) => item.trigger && !matchesSelection(item.resource, item.properties));
+            const deploymentPlan = {
+                selected: changed.map(({ name, trigger }) => ({ name, ...trigger })),
+                endpointConfigName: plan.find((item) => item.trigger).name,
+                // Changed configs must bypass azd's cached deployment state.
+                ...(changed.length ? { revision: randomUUID() } : {}),
+            };
+            // Base64 avoids JSON quoting differences in Windows' azd.cmd shim.
+            await run('azd', ['env', 'set', 'POLLING_TRIGGER_INPUTS', Buffer.from(JSON.stringify(triggers)).toString('base64')]);
+            await run('azd', ['env', 'set', 'POLLING_TRIGGER_PLAN', Buffer.from(JSON.stringify(deploymentPlan)).toString('base64')]);
+            await run('azd', ['env', 'set', 'POLLING_TRIGGER_APP_SETTINGS', Buffer.from(JSON.stringify(listenerSettings)).toString('base64')]);
+            log('Connection authorized. Preparing selected Poll triggers for provisioning.');
+            return;
+        }
+        if (!outputs.POLLING_TRIGGER_APP_SETTINGS
+            || !isDeepStrictEqual(JSON.parse(Buffer.from(outputs.POLLING_TRIGGER_APP_SETTINGS, 'base64').toString('utf8')), listenerSettings)) {
+            throw new Error('Poll listener settings are missing or stale. Rerun azd provision triggers.');
+        }
         let endpoint;
         for (const item of plan) {
-            const { definition, trigger, setting, name, properties, resource } = item;
+            const { definition, trigger, name, properties, resource } = item;
             const url = `${root}/triggerConfigs/${encodeURIComponent(name)}`;
-            localValues[setting] = name;
-            localValues[`AzureWebJobs.${definition.functionName}.Disabled`] = String(!trigger);
             if (!trigger) {
                 if (resource && resource.properties.state !== 'Disabled') {
-                    const { pollingEndpoints, provisioningState, ...preserved } = resource.properties;
-                    await rest('PUT', url, { properties: { ...preserved, state: 'Disabled' } });
+                    throw new Error(`Skipped Poll config ${name} is still enabled. Rerun azd provision triggers.`);
                 }
                 continue;
             }
-            const ordered = (parameters) => [...(parameters ?? [])].sort((a, b) => a.name.localeCompare(b.name));
-            const unchanged = resource?.properties.state === 'Enabled'
-                && resource.properties.provisioningState !== 'Failed'
-                && isDeepStrictEqual(ordered(resource.properties.parameters), ordered(properties.parameters));
-            let created = unchanged ? resource : await rest('PUT', url, { properties });
-            for (let attempt = 0; !created.properties?.pollingEndpoints?.receiveUri
-                && created.properties?.provisioningState !== 'Failed' && attempt < 30; attempt++) {
+            let created = resource;
+            for (let attempt = 0; !matchesSelection(created, properties)
+                && !['Failed', 'Canceled', 'Cancelled'].includes(created?.properties?.provisioningState) && attempt < 30; attempt++) {
                 await wait(2000);
                 created = await rest('GET', url);
             }
-            if (created.properties?.provisioningState === 'Failed' || !created.properties?.pollingEndpoints?.receiveUri) {
-                throw new Error(`Poll source ${name} did not return a usable receive URI. Check its source-registration status and permissions.`);
+            if (!matchesSelection(created, properties)) {
+                throw new Error(`Poll source ${name} is not enabled with a usable receive URI. Check its source-registration status and permissions.`);
             }
             const actualEndpoint = pollingEndpoint(created.properties?.pollingEndpoints?.receiveUri);
             if (endpoint && endpoint !== actualEndpoint) throw new Error('Selected Poll configs returned inconsistent namespace endpoints.');
             endpoint = actualEndpoint;
-            log(`Configured ${definition.functionName} for Poll delivery.`);
+            log(`Verified ${definition.functionName} is enabled for Poll delivery.`);
         }
-        localValues.ConnectorNamespace__pollingEndpoint = endpoint;
-        await run('az', ['functionapp', 'config', 'appsettings', 'set', '-g', outputs.resourceGroupName, '-n', outputs.functionAppName,
-            '--subscription', subscription, '--settings', await jsonFile({ ...localValues, ConnectorNamespace__credential: 'managedidentity' }), '-o', 'none']);
-        await run('azd', ['env', 'set', 'ConnectorNamespace__pollingEndpoint', endpoint]);
-        return localValues;
+        if (!outputs.pollingEndpoint || outputs.pollingEndpoint !== endpoint) {
+            throw new Error('The trigger deployment returned an invalid polling endpoint. Rerun azd provision triggers.');
+        }
+        if (phase === 'verify') {
+            const apps = JSON.parse(await run('az', ['functionapp', 'list', '-g', outputs.resourceGroupName,
+                '--subscription', subscription, '--query', '[].name', '-o', 'json']));
+            if (!Array.isArray(apps)) throw new Error('Azure returned an invalid Function App listing.');
+            await run('azd', ['env', 'set', 'POLLING_FUNCTION_APP_EXISTS', String(apps.includes(outputs.functionAppName))]);
+        }
+        return { ...listenerSettings, ConnectorNamespace__pollingEndpoint: endpoint };
     } finally {
         await rm(temporary, { recursive: true, force: true });
     }
@@ -293,7 +343,7 @@ export function run(command, args, { interactive = false, checkConnected } = {})
     };
     const executable = process.platform === 'win32' ? 'powershell.exe' : command;
     const executableArgs = process.platform === 'win32' ? ['-NoProfile', '-NonInteractive', '-Command',
-        '& $env:POLLING_SETUP_COMMAND @($env:POLLING_SETUP_ARGS | ConvertFrom-Json); exit $LASTEXITCODE'] : args;
+        "$ErrorActionPreference = 'Stop'; $setupArgs = @($env:POLLING_SETUP_ARGS | ConvertFrom-Json); & $env:POLLING_SETUP_COMMAND @setupArgs; exit $LASTEXITCODE"] : args;
     if (process.platform === 'win32') {
         options.env = { ...process.env, POLLING_SETUP_COMMAND: command, POLLING_SETUP_ARGS: JSON.stringify(args) };
     }
@@ -339,13 +389,15 @@ export function run(command, args, { interactive = false, checkConnected } = {})
 }
 
 async function main() {
+    const phase = process.argv[2];
+    if (!['prepare', 'verify', 'finish'].includes(phase)) throw new Error('Specify the prepare, verify, or finish polling setup phase.');
     const config = JSON.parse(await readFile(new URL('./polling-config.json', import.meta.url), 'utf8'));
     const example = JSON.parse(await readFile(new URL('../../local.settings.example.json', import.meta.url), 'utf8'));
     const outputs = JSON.parse(run('azd', ['env', 'get-values', '--output', 'json']));
     let terminal;
     const cancelled = new AbortController();
     const question = async (label) => {
-        if (!process.stdin.isTTY) throw new Error('Source selection requires a terminal. Run azd hooks run postdeploy interactively.');
+        if (!process.stdin.isTTY) throw new Error('Source selection requires a terminal. Run azd provision triggers interactively.');
         if (!terminal) {
             terminal = createInterface({ input: process.stdin, output: process.stdout });
             terminal.on('SIGINT', () => cancelled.abort());
@@ -355,7 +407,7 @@ async function main() {
     };
     try {
         const values = await setupPolling({
-            config, example, outputs, run,
+            phase, config, example, outputs, run,
             choose: async (label, choices) => {
                 console.log(`\n${label}`);
                 choices.forEach((item, index) => console.log(`  [${index + 1}] ${item.label}`));
@@ -380,14 +432,16 @@ async function main() {
                 }
             },
         });
-        try {
-            await writeFile(new URL('../../local.settings.json', import.meta.url),
-                JSON.stringify({ ...example, Values: { ...example.Values, ...values } }, null, 2) + '\n',
-                { flag: 'wx', mode: 0o600 });
-            console.log('Created local.settings.json for local developer authentication.');
-        } catch (error) {
-            if (error.code !== 'EEXIST') throw error;
-            console.log('Existing local.settings.json was preserved. Azure app settings were configured automatically.');
+        if (phase === 'finish') {
+            try {
+                await writeFile(new URL('../../local.settings.json', import.meta.url),
+                    JSON.stringify({ ...example, Values: { ...example.Values, ...values } }, null, 2) + '\n',
+                    { flag: 'wx', mode: 0o600 });
+                console.log('Created local.settings.json for local developer authentication.');
+            } catch (error) {
+                if (error.code !== 'EEXIST') throw error;
+                console.log('Existing local.settings.json was preserved. Update it manually if its settings have changed.');
+            }
         }
     } finally {
         terminal?.close();

@@ -27,9 +27,8 @@ resource connection 'Microsoft.Web/connectorGateways/connections@2026-05-01-prev
   }
 }
 
-var principalNames = concat(['namespace-msi', 'functionapp-msi'], empty(userPrincipalId) ? [] : ['dev-user'])
+var principalNames = concat(['functionapp-msi'], empty(userPrincipalId) ? [] : ['dev-user'])
 var principals = {
-  'namespace-msi': connectorNamespace.identity.principalId
   'functionapp-msi': functionAppPrincipalId
   'dev-user': userPrincipalId
 }

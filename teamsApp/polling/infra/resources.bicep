@@ -21,6 +21,14 @@ param connectorRuntimeUrl string = ''
 @secure()
 param connectorToken string = ''
 
+@minLength(1)
+param pollingEndpoint string
+
+param triggerSettings object
+
+@secure()
+param existingAppSettings object = {}
+
 @description('Maximum scale-out instance count for the Flex Consumption plan.')
 param maximumInstanceCount int = 100
 
@@ -39,6 +47,19 @@ var functionAppName = 'func-${environmentName}-${resourceToken}'
 var appInsightsName = 'appi-${environmentName}-${resourceToken}'
 var logAnalyticsName = 'log-${environmentName}-${resourceToken}'
 var deploymentContainerName = 'app-package'
+var fixedAppSettingNames = [
+  'AzureWebJobsStorage__accountName'
+  'APPLICATIONINSIGHTS_CONNECTION_STRING'
+  'ConnectorRuntimeUrl'
+  'ConnectorToken'
+  'ConnectorNamespace__pollingEndpoint'
+  'ConnectorNamespace__credential'
+]
+var additionalAppSettings = union(existingAppSettings, triggerSettings)
+var functionAppSettings = map(filter(items(additionalAppSettings), setting => !contains(fixedAppSettingNames, setting.key)), setting => {
+  name: setting.key
+  value: string(setting.value)
+})
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageAccountName
@@ -134,7 +155,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
     siteConfig: {
       ftpsState: 'FtpsOnly'
       minTlsVersion: '1.2'
-      appSettings: [
+      appSettings: concat([
         {
           name: 'AzureWebJobsStorage__accountName'
           value: storage.name
@@ -151,7 +172,15 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           name: 'ConnectorToken'
           value: connectorToken
         }
-      ]
+        {
+          name: 'ConnectorNamespace__pollingEndpoint'
+          value: pollingEndpoint
+        }
+        {
+          name: 'ConnectorNamespace__credential'
+          value: 'managedidentity'
+        }
+      ], functionAppSettings)
     }
   }
   tags: union(tags, {

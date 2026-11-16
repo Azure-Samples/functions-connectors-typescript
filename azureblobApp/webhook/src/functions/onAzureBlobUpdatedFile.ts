@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import { InvocationContext } from '@azure/functions';
-import { BlobMetadata as AzureBlobMetadata } from '@azure/connectors/generated/AzureblobExtensions';
+import { BlobMetadata as AzureBlobMetadata } from '@azure/connectors/generated/AzureBlobExtensions';
 import { connectorTrigger } from '@azure/functions-extensions-connectors';
 
 connectorTrigger<AzureBlobMetadata>('OnAzureBlobUpdatedFile', {

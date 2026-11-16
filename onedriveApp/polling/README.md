@@ -14,7 +14,7 @@ Properties-only functions use the typed `connectors.onedriveforbusiness` helpers
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 24 or later
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.33.0 or later
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
 - PowerShell 7 on Windows, because azd runs the hooks with `pwsh` (the setup script itself is Node.js)
 - A OneDrive for Business account with access to the folder to watch, and permission to complete OAuth consent
@@ -41,7 +41,7 @@ azd env new onedrive-polling
 azd up
 ```
 
-Use a different environment from the webhook sample. Complete OAuth consent in the browser opened by the hook, then browse to a folder and choose its **Use** entry; the drive root placeholder `root` cannot be selected. The selected folder is applied to all four triggers.
+Use a different environment from the webhook sample. Complete OAuth consent in the browser opened by setup, then browse to a folder and choose its **Use** entry; the drive root placeholder `root` cannot be selected. Infrastructure provisions all four Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code.
 
 ## Optional configuration
 
@@ -51,9 +51,9 @@ Set environment values with `azd env set <setting> <value>` before `azd up`.
 | --- | --- |
 | `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
 | `POLLING_TRIGGER_INPUTS` | Saved folder selection, reused on redeployment; clear it with `azd env set POLLING_TRIGGER_INPUTS=` to choose again |
-| `azd hooks run postdeploy` | Rerun consent, folder selection, and trigger setup without redeploying |
+| `azd provision triggers` | Rerun consent, folder selection, and trigger setup without reprovisioning base resources; then run `azd provision app` and `azd deploy` |
 
-The postdeploy hook creates the Poll trigger configurations named by the `<Function>TriggerConfigName` settings in `local.settings.example.json` and applies the polling endpoint and settings to the Function App with managed-identity authentication.
+Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`. Function App infrastructure applies them and the trigger layer's polling endpoint with managed-identity authentication.
 
 ## Local development
 
@@ -64,7 +64,7 @@ If the Function App is already deployed, stop it before running locally; listene
    Use the ignored file generated during `azd up`, which contains the polling endpoint and trigger configuration names. An existing file is preserved. Only if the file is missing, rerun setup:
 
    ```bash
-   azd hooks run postdeploy
+   azd hooks run predeploy
    ```
 
 2. Sign in as a developer with access to the connection, and start Azurite in a separate terminal:

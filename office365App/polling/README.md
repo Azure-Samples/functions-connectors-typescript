@@ -16,8 +16,9 @@ Azure Functions sample for the [Office 365 Outlook connector](https://learn.micr
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 24 or later
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.33.0 or later
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later, signed in with permission to read and write trigger configurations in the Connector Namespace
+- PowerShell 7 (`pwsh`) on Windows, used by the `azd` hooks
 - An Office 365 mailbox and permission to authorize the connection
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
 - [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli), used for OAuth consent:
@@ -42,18 +43,18 @@ azd env new office365-polling
 azd up
 ```
 
-Run `azd up` in an interactive terminal: the postdeploy hook (`node ./infra/scripts/postdeploy.mjs`) opens the OAuth sign-in, which you complete with the mailbox account to monitor, then prompts for trigger inputs such as the calendar through live connector pickers. Use a different azd environment from webhook.
+Run `azd up` in an interactive terminal: setup opens the OAuth sign-in for the mailbox account to monitor, then prompts for inputs such as the calendar through live connector pickers. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. Use a different azd environment from webhook.
 
 ## Optional configuration
 
 | Setting / option | Purpose |
 | --- | --- |
 | `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
-| `OnSharedMailboxNewEmail` prompt | Choose **Configure** during postdeploy to monitor a shared mailbox; full mailbox access required |
-| `azd env set POLLING_TRIGGER_INPUTS ""` then `azd hooks run postdeploy` | Clear saved trigger selections and inputs and prompt again |
-| `azd hooks run postdeploy` | Rerun consent and trigger setup without redeploying |
+| `OnSharedMailboxNewEmail` prompt | Choose **Configure** during setup to monitor a shared mailbox; full mailbox access required |
+| `azd env set POLLING_TRIGGER_INPUTS=` then `azd provision triggers` | Clear saved trigger selections and inputs and prompt again |
+| `azd provision triggers` | Rerun consent and trigger setup without reprovisioning base resources; then run `azd provision app` and `azd deploy` |
 
-Postdeploy asks **Skip** or **Configure** for each optional trigger and writes `AzureWebJobs.<Function>.Disabled` to the Function App settings and new local settings, so unselected listeners stay disabled. Deselected sample-owned Poll configurations are disabled, not deleted. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+Setup asks **Skip** or **Configure** for each optional trigger. Function App infrastructure sets `AzureWebJobs.<Function>.Disabled`, and new local settings contain the same flags, so unselected listeners stay disabled. Deselected sample-owned Poll configurations are disabled, not deleted. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
 
 ## Local development
 
@@ -64,7 +65,7 @@ If the Function App is already deployed, stop it before running locally to avoid
    Use the file generated during successful `azd up`; an existing file is never overwritten. Only if it is missing, rerun:
 
    ```bash
-   azd hooks run postdeploy
+   azd hooks run predeploy
    ```
 
 2. Sign in with your developer account for local credentials.

@@ -187,7 +187,7 @@ function run(command, args, { interactive = false } = {}) {
     };
     const result = process.platform === 'win32'
         ? spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-            '& $env:AZURE_DEVOPS_SETUP_COMMAND @($env:AZURE_DEVOPS_SETUP_ARGS | ConvertFrom-Json); exit $LASTEXITCODE'], {
+            "$ErrorActionPreference = 'Stop'; $setupArgs = @($env:AZURE_DEVOPS_SETUP_ARGS | ConvertFrom-Json); & $env:AZURE_DEVOPS_SETUP_COMMAND @setupArgs; exit $LASTEXITCODE"], {
             ...options, env: { ...process.env, AZURE_DEVOPS_SETUP_COMMAND: command, AZURE_DEVOPS_SETUP_ARGS: JSON.stringify(args) },
         })
         : spawnSync(command, args, options);

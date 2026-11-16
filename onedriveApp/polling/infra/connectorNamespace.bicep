@@ -5,7 +5,6 @@ param name string
 param location string
 param tags object = {}
 param connectorName string
-param functionAppPrincipalId string
 param userPrincipalId string = ''
 
 resource connectorNamespace 'Microsoft.Web/connectorGateways@2026-05-01-preview' = {
@@ -36,28 +35,19 @@ resource connection 'Microsoft.Web/connectorGateways/connections@2026-05-01-prev
   } : {})
 }
 
-var principalNames = concat(['namespace-msi', 'functionapp-msi'], empty(userPrincipalId) ? [] : ['dev-user'])
-var principals = {
-  'namespace-msi': connectorNamespace.identity.principalId
-  'functionapp-msi': functionAppPrincipalId
-  'dev-user': userPrincipalId
-}
-
-resource accessPolicies 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = [
-  for principalName in principalNames: {
-    parent: connection
-    name: principalName
-    properties: {
-      principal: {
-        type: 'ActiveDirectory'
-        identity: {
-          objectId: principals[principalName]
-          tenantId: tenant().tenantId
-        }
+resource userAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = if (!empty(userPrincipalId)) {
+  parent: connection
+  name: 'dev-user'
+  properties: {
+    principal: {
+      type: 'ActiveDirectory'
+      identity: {
+        objectId: userPrincipalId
+        tenantId: tenant().tenantId
       }
     }
   }
-]
+}
 
 output name string = connectorNamespace.name
 output resourceId string = connectorNamespace.id

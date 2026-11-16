@@ -9,7 +9,7 @@ Azure Functions sample for the [Azure Blob Storage connector](https://learn.micr
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 24 or later
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.33.0 or later
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
 - PowerShell 7 on Windows, because azd runs the hooks with `pwsh` (the setup script itself is Node.js)
 - Azure permissions to deploy resources and role assignments
@@ -36,7 +36,7 @@ azd env new azureblob-polling
 azd up
 ```
 
-Use a different environment from the webhook sample. Deployment provisions a separate monitored storage account with a `testcontainer` container and configures the connection with the namespace's managed identity, so no OAuth consent or source prompts are needed. The hook creates the Poll trigger configuration for that container. Storage role assignments can take up to 10 minutes to propagate.
+Use a different environment from the webhook sample. Deployment provisions a separate monitored storage account with a `testcontainer` container and configures the connection with the namespace's managed identity, so no OAuth consent or source prompts are needed. After the connection is ready, infrastructure provisions the Poll trigger as **Enabled**, then deploys the Function App with the trigger's polling endpoint before deploying the code. Storage role assignments can take up to 10 minutes to propagate.
 
 ## Optional configuration
 
@@ -46,9 +46,9 @@ Set environment values with `azd env set <setting> <value>` before `azd up`.
 | --- | --- |
 | `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
 | `POLLING_TRIGGER_INPUTS` | Saved source parameters, reused on redeployment; clear it with `azd env set POLLING_TRIGGER_INPUTS=` to regenerate them from the infrastructure outputs |
-| `azd hooks run postdeploy` | Rerun trigger setup without redeploying |
+| `azd provision triggers` | Reapply trigger setup without reprovisioning the base resources; then run `azd provision app` and `azd deploy` |
 
-The trigger configuration name comes from the `OnAzureBlobUpdatedFileTriggerConfigName` setting in `local.settings.example.json`; the hook applies it and the polling endpoint to the Function App with managed-identity authentication.
+The trigger configuration name comes from the `OnAzureBlobUpdatedFileTriggerConfigName` setting in `local.settings.example.json`; the Function App infrastructure applies it and the trigger layer's polling endpoint with managed-identity authentication.
 
 ## Local development
 
@@ -59,7 +59,7 @@ If the Function App is already deployed, stop it before running locally; listene
    Use the ignored file generated during `azd up`, which contains the polling endpoint and trigger configuration name. An existing file is preserved. Only if the file is missing, rerun setup:
 
    ```bash
-   azd hooks run postdeploy
+   azd hooks run predeploy
    ```
 
 2. Sign in as a developer with access to the connection, and start Azurite in a separate terminal:
