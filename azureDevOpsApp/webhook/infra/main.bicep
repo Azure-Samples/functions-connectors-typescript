@@ -17,7 +17,7 @@ param environmentName string
 @description('Primary location for all resources.')
 param location string
 
-@description('Region for the Connector Namespace preview.')
+@description('Region for the Connector Namespace.')
 param connectorNamespaceLocation string = 'brazilsouth'
 
 @description('AAD object id of the deployer, granted connection access for local development.')

@@ -17,7 +17,7 @@ param environmentName string
 @description('Primary location for all resources.')
 param location string
 
-@description('Region with Connector Namespace preview support.')
+@description('Region with Connector Namespace support.')
 param connectorNamespaceLocation string = 'brazilsouth'
 
 @metadata({

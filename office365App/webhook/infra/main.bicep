@@ -17,7 +17,7 @@ param environmentName string
 @description('Primary location for all resources.')
 param location string
 
-@description('Optional. Region for the Connector Namespace. Defaults to brazilsouth (currently the only region with the required preview features).')
+@description('Optional. Region for the Connector Namespace. Defaults to brazilsouth (currently the only region with the required features).')
 param connectorNamespaceLocation string = 'brazilsouth'
 
 @description('Optional. AAD object id of a user (typically the deployer) to grant access to the connector connection so the same code can be debugged locally with `az login` credentials.')
