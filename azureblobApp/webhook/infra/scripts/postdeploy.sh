@@ -30,7 +30,6 @@ connectorNamespaceName=$(echo "$outputs"   | jq -r '.connectorNamespaceName // e
 azureblobConnectionName=$(echo "$outputs"  | jq -r '.azureblobConnectionName // empty')
 functionAppName=$(echo "$outputs"          | jq -r '.functionAppName // empty')
 namespaceLocation=$(echo "$outputs"        | jq -r '.CONNECTOR_NAMESPACE_LOCATION // empty')
-namespacePrincipalId=$(echo "$outputs"     | jq -r '.connectorNamespacePrincipalId // empty')
 accountInput=$(echo "$outputs"            | jq -r '.monitoredStorageAccountName // empty')
 containerInput=$(echo "$outputs"          | jq -r '.monitoredContainerName // empty')
 functionAppPrincipalId=$(echo "$outputs"   | jq -r '.functionAppPrincipalId // empty')
@@ -38,7 +37,7 @@ userPrincipalId=$(echo "$outputs"          | jq -r '.AZURE_PRINCIPAL_ID // empty
 tenantId=$(az account show --query tenantId -o tsv)
 
 if [[ -z "$resourceGroupName" || -z "$connectorNamespaceName" || -z "$azureblobConnectionName" || -z "$functionAppName" ||
-      -z "$namespaceLocation" || -z "$namespacePrincipalId" || -z "$accountInput" || -z "$containerInput" ]]; then
+      -z "$namespaceLocation" || -z "$accountInput" || -z "$containerInput" ]]; then
     echo -e "${RED}ERROR: required azd outputs missing. Run 'azd provision' first.${NC}"
     exit 1
 fi
@@ -157,7 +156,6 @@ set_connection_access_policy() {
     return $rc
 }
 
-set_connection_access_policy 'namespace-msi' "$namespacePrincipalId"
 if [[ -n "$functionAppPrincipalId" ]]; then
     echo -e "${CYAN}-> Granting function-app managed identity access to the connection...${NC}"
     set_connection_access_policy 'functionapp-msi' "$functionAppPrincipalId"

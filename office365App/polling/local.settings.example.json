@@ -4,6 +4,13 @@
     "FUNCTIONS_WORKER_RUNTIME": "node",
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
-    "OnNewEmailPollTriggerConfigName": "outlook-new-email-poll"
+    "OnNewEmailTriggerConfigName": "office365-onnewemail",
+    "OnFlaggedEmailTriggerConfigName": "office365-onflaggedemail",
+    "OnNewMentionMeEmailTriggerConfigName": "office365-onnewmentionmeemail",
+    "OnCalendarNewItemsTriggerConfigName": "office365-oncalendarnewitems",
+    "OnCalendarUpdatedItemsTriggerConfigName": "office365-oncalendarupdateditems",
+    "OnUpcomingEventTriggerConfigName": "office365-onupcomingevent",
+    "OnSharedMailboxNewEmailTriggerConfigName": "office365-onsharedmailboxnewemail",
+    "AzureWebJobs.OnSharedMailboxNewEmail.Disabled": "true"
   }
 }

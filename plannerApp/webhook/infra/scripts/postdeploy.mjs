@@ -201,7 +201,7 @@ export function run(command, args, { interactive = false, checkConnected } = {})
     };
     const executable = process.platform === 'win32' ? 'powershell.exe' : command;
     const executableArgs = process.platform === 'win32' ? ['-NoProfile', '-NonInteractive', '-Command',
-        '& $env:WEBHOOK_SETUP_COMMAND @($env:WEBHOOK_SETUP_ARGS | ConvertFrom-Json); exit $LASTEXITCODE'] : args;
+        "$ErrorActionPreference = 'Stop'; $setupArgs = @($env:WEBHOOK_SETUP_ARGS | ConvertFrom-Json); & $env:WEBHOOK_SETUP_COMMAND @setupArgs; exit $LASTEXITCODE"] : args;
     if (process.platform === 'win32') {
         options.env = { ...process.env, WEBHOOK_SETUP_COMMAND: command, WEBHOOK_SETUP_ARGS: JSON.stringify(args) };
     }

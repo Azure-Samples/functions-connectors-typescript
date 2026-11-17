@@ -188,7 +188,7 @@ function run(command, args, { interactive = false } = {}) {
     };
     const result = process.platform === 'win32'
         ? spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-            '& $env:WEBHOOK_SETUP_COMMAND @($env:WEBHOOK_SETUP_ARGS | ConvertFrom-Json); exit $LASTEXITCODE'], {
+            "$ErrorActionPreference = 'Stop'; $setupArgs = @($env:WEBHOOK_SETUP_ARGS | ConvertFrom-Json); & $env:WEBHOOK_SETUP_COMMAND @setupArgs; exit $LASTEXITCODE"], {
             ...options, env: { ...process.env, WEBHOOK_SETUP_COMMAND: command, WEBHOOK_SETUP_ARGS: JSON.stringify(args) },
         })
         : spawnSync(command, args, options);

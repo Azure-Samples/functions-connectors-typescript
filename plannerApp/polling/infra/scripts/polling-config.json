@@ -1,0 +1,19 @@
+{
+    "connectorName": "planner",
+    "displayName": "Planner",
+    "authenticationType": "",
+    "triggers": [
+        {
+            "functionName": "OnPlannerCompleteTask",
+            "operationName": "OnCompleteTask_V3"
+        },
+        {
+            "functionName": "OnPlannerNewTask",
+            "operationName": "OnNewTask_V3"
+        },
+        {
+            "functionName": "OnPlannerTaskAssignedToMe",
+            "operationName": "OnTaskAssignedToMe_V2"
+        }
+    ]
+}

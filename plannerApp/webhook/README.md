@@ -1,51 +1,97 @@
-# Planner Connector Sample
+# Planner Webhook Triggers (TypeScript)
 
-Azure Functions app covering all three `connectors.planner` helpers.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). It handles [Planner connector](https://learn.microsoft.com/connectors/planner/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by the task ID, title, and completion, plan, or assignment details.
 
-| Function | Helper | Connector operation | Required parameters |
-| -------- | ------ | ------------------- | ------------------- |
-| [OnPlannerCompleteTask](src/functions/onPlannerCompleteTask.ts) | `onCompleteTask` | `OnCompleteTask_V3` | `groupId`, `id` |
-| [OnPlannerNewTask](src/functions/onPlannerNewTask.ts) | `onNewTask` | `OnNewTask_V3` | `groupId`, `id` |
-| [OnPlannerTaskAssignedToMe](src/functions/onPlannerTaskAssignedToMe.ts) | `onTaskAssignedToMe` | `OnTaskAssignedToMe_V2` | None |
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnPlannerCompleteTask` | [`OnCompleteTask_V3`](https://learn.microsoft.com/connectors/planner/#when-a-task-is-completed) | Task completed in a plan |
+| `OnPlannerNewTask` | [`OnNewTask_V3`](https://learn.microsoft.com/connectors/planner/#when-a-new-task-is-created) | Task created in a plan |
+| `OnPlannerTaskAssignedToMe` | [`OnTaskAssignedToMe_V2`](https://learn.microsoft.com/connectors/planner/#when-a-task-is-assigned-to-me) | Task assigned to the signed-in user |
 
-Handlers use `PlannerTaskTriggerContext.tasks`, typed as SDK `GetTaskResponseV2[]` (`PlannerTask[]`). They log task IDs, titles, completion or assignment metadata, and return the original payload unchanged. The `id` operation parameter is the **plan ID**, not the task ID.
+## Prerequisites
 
-## Prerequisites and local development
+- [Node.js 24](https://nodejs.org/) or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- A Microsoft 365 account with Planner access to the selected group and plan, and permission to authorize the connection
+- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
 
-Follow the [shared prerequisites](../../README.md#prerequisites), including Node.js 24+. Live events require a test Microsoft 365 account with Planner access and permissions for the selected group and plan.
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
 
-From this folder:
+  Or in PowerShell:
 
-```sh
-npm ci
-npm test
-npm start
-```
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
-Run `npm run setup:local`, then configure `local.settings.json` without committing credentials, and run Azurite for development storage. Local callbacks require reachable HTTPS and separate subscriptions; starting the host does not create them.
+## Deploy to Azure
 
-## Deploy and configure
-
-The self-contained [infra/main.bicep](infra/main.bicep) template provisions a Node.js 24 Flex Consumption Function App, host storage, monitoring, a Connector Namespace, a `planner` connection, and access policies for the namespace, Function App, and deployer.
-
-```sh
+```bash
+cd plannerApp/webhook
 az login
-az extension add --name connector-namespace
 azd auth login
-azd env new <unique-planner-webhook-environment>
+azd env new planner-webhook
 azd up
 ```
 
-Packaging, provisioning, and deployment run sequentially before the interactive postdeploy hook. If needed, the hook runs `az connector-namespace connection authenticate`; complete consent in your normal browser and keep the terminal open. It verifies `Connected`, lets you configure or skip each trigger, creates selected webhook subscriptions, and applies `PlannerConnection` and listener-enabled settings automatically. It retrieves the extension key without printing it or placing it in the callback URL. The CLI extension must support `connection authenticate`.
+Complete the OAuth sign-in opened by `azd up` with the Planner account to monitor. Setup prompts for the group and plan (the `id` parameter is the plan ID, not a task ID); the assigned-to-me trigger needs no selectors. Configure or skip each trigger when prompted; at least one trigger must be configured. If setup fails or is interrupted, run `azd hooks run postdeploy` to retry without redeploying.
 
-Only required selectors prompt, for example Group Id and Plan Id. Authenticated pickers supply actual identifiers; optional fields remain at defaults. If a picker has no usable choices, enter the actual connector identifier manually, or leave blank to skip that trigger. The assigned-to-me operation uses the authenticated user and needs no selectors.
+## Optional configuration
 
-During consent, the terminal checks Azure connection status every 10 seconds. A browser popup that stays open is not proof of failure: wait for **authentication confirmed: Azure connection is Connected**, then close the sign-in windows and continue in the terminal. Setup does not wait for a missing browser redirect once Azure confirms the connection. If setup failed or was interrupted, run `azd hooks run postdeploy` to retry without redeploying.
+Set environment values before `azd up`.
 
-Selections are saved in `PLANNER_WEBHOOK_TRIGGER_INPUTS`. Reruns reuse unchanged subscriptions; clear it with `azd env set PLANNER_WEBHOOK_TRIGGER_INPUTS=`, then run `azd hooks run postdeploy` to select again. Skipped owned subscriptions and listeners are disabled without deleting them or changing their selectors. Skipping everything stops before changes. Poll or other apps' subscriptions are never overwritten.
+| Setting / option | Purpose |
+| --- | --- |
+| `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
+| `PLANNER_WEBHOOK_TRIGGER_INPUTS` | Saved trigger selections reused on rerun; run `azd env set PLANNER_WEBHOOK_TRIGGER_INPUTS=` then `azd hooks run postdeploy` to select again |
+| `AzureWebJobs.<FunctionName>.Disabled` | App setting written by setup; `true` for skipped triggers |
 
-A fresh `local.settings.json` receives the runtime URL; existing local settings are preserved. For local callbacks, use a separate subscription and reachable HTTPS rather than retargeting the deployed subscription.
+Skipped triggers' subscriptions are disabled, not deleted. Subscriptions owned by other apps are never overwritten.
+
+## Local development
+
+1. Prepare `local.settings.json`.
+
+   `azd up` creates it with the `PlannerConnection` runtime URL; existing files are preserved. Without a deployment, create it from the example and fill in the placeholder:
+
+   ```bash
+   npm run setup:local
+   ```
+
+2. Start Azurite in a separate terminal.
+
+   ```bash
+   azurite
+   ```
+
+3. Install, build, and start the local Functions host with authentication enabled.
+
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
+
+   Core Tools v4 bypasses local key authentication by default. Use `--enableAuth` before exposing the host through a public tunnel so callback requests must present the system key.
+
+4. Expose port 7071 over public HTTPS. Get the **local** `connector_extension` system key from Azurite's `azure-webjobs-secrets`, not the Azure Function App's key or a function key. Keep it private.
+
+5. In [Connector Namespaces](https://connectors.azure.com/), create a separate trigger configuration whose callback is `https://<tunnel-host>/runtime/webhooks/connector?functionName=<FunctionName>` with the local key as the `code` query parameter. The postdeploy hook only targets the deployed Function App, so do not retarget the deployed subscription.
+
+6. When finished, disable or delete the local trigger configuration.
+
+Never commit keys, callback URLs, or local settings.
 
 ## Verify
 
-Confirm the connection is `Connected` and the desired subscriptions are `Enabled` in [Connector Namespaces](https://connectors.azure.com/). Create a test task, complete it, or assign it to the connected user, then inspect Function App logs. Offline tests cover all three wrappers and payload scenarios, not live delivery.
+Check the connection is **Connected** and selected triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Create, complete, or assign a task to the connected user, then check Function App logs for `<FunctionName> trigger received.`; build/deployment success alone is not real-event verification. Delivery is at least once and source detection may be delayed.
+
+Run `azd down --purge` when finished.
+
+## More
+
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Planner connector reference](https://learn.microsoft.com/connectors/planner/)

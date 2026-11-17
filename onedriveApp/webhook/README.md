@@ -1,78 +1,99 @@
-# OneDrive for Business Connector Sample
+# OneDrive for Business Webhook Triggers (TypeScript)
 
-Azure Functions app demonstrating all OneDrive for Business triggers: two file-content triggers and two typed metadata triggers from [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors). Handlers are in [src/functions](src/functions/).
+Azure Functions sample for the [OneDrive for Business connector](https://learn.microsoft.com/connectors/onedriveforbusiness/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/` and logs the trigger name on receipt (for example, `OnOneDriveNewFile trigger received.`).
 
 | Function | Connector operation | Description |
-| -------- | ------------------- | ----------- |
-| [OnOneDriveNewFileContent](src/functions/onOneDriveNewFileContent.ts) | `OnNewFileV2` | When a file is created; returns file content |
-| [OnOneDriveUpdatedFileContent](src/functions/onOneDriveUpdatedFileContent.ts) | `OnUpdatedFileV2` | When a file is modified; returns file content |
-| [OnOneDriveNewFile](src/functions/onOneDriveNewFile.ts) | `OnNewFilesV2` | New file metadata in the configured folder |
-| [OnOneDriveUpdatedFile](src/functions/onOneDriveUpdatedFile.ts) | `OnUpdatedFilesV2` | Updated file metadata in the configured folder |
+| --- | --- | --- |
+| `OnOneDriveNewFileContent` | [`OnNewFileV2`](https://learn.microsoft.com/connectors/onedriveforbusiness/#when-a-file-is-created) | File created, including content |
+| `OnOneDriveUpdatedFileContent` | [`OnUpdatedFileV2`](https://learn.microsoft.com/connectors/onedriveforbusiness/#when-a-file-is-modified) | File modified, including content |
+| `OnOneDriveNewFile` | [`OnNewFilesV2`](https://learn.microsoft.com/connectors/onedriveforbusiness/#when-a-file-is-created-(properties-only)) | File created (properties only) |
+| `OnOneDriveUpdatedFile` | [`OnUpdatedFilesV2`](https://learn.microsoft.com/connectors/onedriveforbusiness/#when-a-file-is-modified-(properties-only)) | File modified (properties only) |
 
-The metadata helpers are `connectors.onedriveforbusiness.onNewFiles` and `onUpdatedFiles`, with `OneDriveFileTriggerContext`. Their plural operation IDs, `OnNewFilesV2` / `OnUpdatedFilesV2`, return metadata batches.
-
-The singular `OnNewFileV2` / `OnUpdatedFileV2` operations return file content, not metadata. The extension has no typed content helpers, so these handlers use `app.connectorTrigger` from `@azure/functions` to receive and return the raw payload unchanged without metadata normalization or assumptions about its encoding. They log only receipt, never file contents. Use a test account and non-sensitive files.
-
-Content triggers skip files larger than 50 MB. Files moved within OneDrive do not count as newly created files. See the [connector reference](https://learn.microsoft.com/connectors/onedriveforbusiness/#triggers) for limitations.
-
-The namespace now provisions the `onedriveforbusiness` connector, not the consumer `onedrive` connector. For an existing environment that uses a consumer connection, create a fresh azd environment or explicitly replace that connection before running setup; these samples do not automatically migrate or delete it.
+Properties-only functions use the typed `connectors.onedriveforbusiness` helpers and also log each file's name, path, and size or last-modified time. The content functions use `app.connectorTrigger` to return the raw payload unchanged; they log only receipt and never log file contents. Use a test account and non-sensitive files.
 
 ## Prerequisites
 
-Follow the [shared prerequisites](../../README.md#prerequisites). You also need a Microsoft 365 OneDrive for Business account with access to the folder to watch, and permission to consent to the connector.
+- [Node.js](https://nodejs.org/) 24 or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell 7 on Windows for `postdeploy.ps1`, or Bash with `jq` on macOS/Linux for `postdeploy.sh`
+- A OneDrive for Business account with access to the folder to watch, and permission to complete OAuth consent
+- For local development: [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local), [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite), and a public HTTPS tunnel such as [dev tunnels](https://learn.microsoft.com/azure/developer/dev-tunnels/get-started)
+- [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
+
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  Or in PowerShell:
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
 
 ## Deploy to Azure
 
-Run from `onedriveApp/webhook`:
-
-```sh
+```bash
+cd onedriveApp/webhook
 az login
 azd auth login
+azd env new onedrive-webhook
 azd up
 ```
 
-The deployment builds the TypeScript app and runs the [postdeploy hook](azure.yaml). Complete OAuth consent in your browser, then use the interactive folder picker. Both platform hooks list folders through the authorized connector connection and create four triggers for your selected folder: two content and two properties-only subscriptions.
+Use a different environment from the polling sample. Complete OAuth consent in the browser opened by the hook, then pick the folder to monitor; the literal `root` is not a valid trigger folder ID. The hook creates all four trigger configurations for that folder with the Function App's callback.
 
-## Resources provisioned
+## Optional configuration
 
-- Flex Consumption Function App with a system-assigned managed identity.
-- Storage account, Application Insights, and Log Analytics workspace.
-- Connector Namespace and OneDrive for Business connection.
+Set environment values with `azd env set <setting> <value>` before `azd up`.
 
-The Preview Functions Extension Bundle is already configured in [host.json](host.json).
+| Setting / option | Purpose |
+| --- | --- |
+| `ONEDRIVE_FOLDER_ID` | Connector-returned folder ID; saved by the picker and offered on later runs |
+| `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
+| `azd hooks run postdeploy` | Rerun consent, folder selection, and trigger setup without redeploying |
 
-## Connector configuration
+## Local development
 
-The selected folder ID is saved as `ONEDRIVE_FOLDER_ID` on the azd environment. To make a saved folder available in the picker, set the `Id` returned by the connector's folder listing:
+Registering local callbacks replaces the deployed callbacks for this environment; use a separate environment to avoid disrupting Azure delivery.
 
-```sh
-azd env set ONEDRIVE_FOLDER_ID "<connector-folder-id>"
-```
+1. Prepare `local.settings.json` from the example (an existing file is preserved), then fill in its placeholders:
 
-Choose the saved value in the picker to avoid browsing. The drive root is a browsing entry point only; the literal `root` is not a valid trigger folder ID and cannot be selected, reused from saved settings, or entered manually. Select a folder returned by the connector instead. Folder listing supports root arrays and the business connector's paged `value` envelope using the SDK's double-encoded `foldersV2` route. The picker shows the returned page; enter a folder ID manually if it is not listed. A saved folder setting does not bypass required OAuth consent. To repeat connection and trigger setup without redeploying:
+   ```bash
+   npm run setup:local
+   ```
 
-```sh
-azd hooks run postdeploy
-```
+2. Start Azurite in a separate terminal:
+
+   ```bash
+   azurite
+   ```
+
+3. Install, build, and start the host with authentication enabled:
+
+   ```bash
+   npm ci
+   npm run build
+   func start --enableAuth
+   ```
+
+   Core Tools v4 bypasses key authentication locally by default; use `--enableAuth` before exposing the host through a public tunnel.
+
+4. Expose port 7071 through a public HTTPS tunnel, then register each function's `https://<tunnel-host>/runtime/webhooks/connector?functionName=<Function>` callback with the local host's `connector_extension` system key (not the Azure app's key), following the [webhook configuration guide](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#webhook-delivery). The postdeploy hook registers Azure callbacks only.
+
+After testing locally, rerun `azd hooks run postdeploy` to restore Azure delivery, then close the tunnel. Use [polling](../polling/README.md) to avoid a tunnel.
 
 ## Verify
 
-Open [Connector Namespaces](https://connectors.azure.com/) and select the namespace created by azd. Expect one OneDrive for Business connection in `Connected` state and four triggers in `Enabled` state: `OnNewFileV2`, `OnUpdatedFileV2`, `OnNewFilesV2`, and `OnUpdatedFilesV2`.
+Check the connection is **Connected** and all four triggers are **Enabled** in [Connector Namespaces](https://connectors.azure.com/). Create a small file (under 50 MB) in the selected folder, then modify it. Look for `<FunctionName> trigger received.` (content functions log `<FunctionName> content trigger received.`) in the function logs or Application Insights. A single change can invoke both its content and properties-only function. Delivery is at least once, and moving a file within OneDrive does not create a new-file event.
 
-Create or modify a small test file in the selected folder, then inspect the Function App logs in Application Insights. A creation or modification can invoke both its content handler and its metadata handler; these are distinct operations, not aliases. Content handlers log receipt only, while metadata handlers log file properties. If the connection is unauthenticated or triggers are missing, rerun the hook and complete consent.
+To remove the Azure resources from this folder:
 
-## Run locally
-
-Run `npm run setup:local`, then configure `local.settings.json` for your environment and start Azurite if using the default development storage setting:
-
-```sh
-npm install
-npm start
+```bash
+azd down --purge
 ```
-
-This builds the app and starts the Functions host. Receiving connector events locally also requires a reachable HTTPS callback and a separate trigger configuration targeting it; `npm start` does not create subscriptions.
 
 ## More
 
-- [OneDrive for Business connector operations](https://learn.microsoft.com/connectors/onedriveforbusiness/)
-- [All TypeScript samples](../../README.md#samples)
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [OneDrive for Business connector reference](https://learn.microsoft.com/connectors/onedriveforbusiness/)

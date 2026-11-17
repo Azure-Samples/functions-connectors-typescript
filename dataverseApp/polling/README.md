@@ -1,108 +1,99 @@
-# Microsoft Dataverse - Polling
+# Microsoft Dataverse Polling Triggers (TypeScript)
 
-Receive the [five Dataverse events](../README.md) without a public callback,
-connector extension key, or local tunnel. The
-[handlers](src/functions/dataverseTriggers.ts) use `DeliveryMode.Poll`,
-`connection: 'ConnectorNamespace'`, and one
-`%<FunctionName>TriggerConfigName%` setting per function. Each invocation receives
-one raw Poll event; its contents remain opaque.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). With `deliveryMode: DeliveryMode.Poll`, the host receives events outbound from the Connector Namespace; no public callback or tunnel is needed.
 
-## Configure
+Each function is in its own file under `src/functions/`, uses the raw `app.connectorTrigger` API with an `unknown` payload, and logs only the trigger name.
 
-Run from this folder, using a distinct environment for polling:
+| Function | Connector operation | Description |
+| --- | --- | --- |
+| `OnDataverseRowChanged` | [`SubscribeWebhookTrigger`](https://learn.microsoft.com/connectors/commondataservice/#when-a-row-is-added,-modified-or-deleted) | Row added, modified or deleted (`message=7`, `scope=4`) |
+| `OnDataverseActionPerformed` | [`BusinessEventsTrigger`](https://learn.microsoft.com/connectors/commondataservice/#when-an-action-is-performed) | Selected action performed |
+| `OnDataverseRowAdded` | [`SubscribeOnNewItems`](https://learn.microsoft.com/connectors/commondataservice/#when-a-row-is-added-%5Bdeprecated%5D) | When a row is added |
+| `OnDataverseRowModified` | [`SubscribeOnUpdatedItems`](https://learn.microsoft.com/connectors/commondataservice/#when-a-row-is-modified-%5Bdeprecated%5D) | When a row is modified |
+| `OnDataverseRowDeleted` | [`SubscribeOnDeletedItems`](https://learn.microsoft.com/connectors/commondataservice/#when-a-row-is-deleted-%5Bdeprecated%5D) | When a row is deleted |
 
-```sh
-npm ci
+The connector is [Microsoft Dataverse (`commondataservice`)](https://learn.microsoft.com/connectors/commondataservice/); its separate row operations are marked deprecated in connector metadata. They overlap the combined row-change event, so one row change can invoke both.
+
+## Prerequisites
+
+- [Node.js 24](https://nodejs.org/) or later
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.33.0 or later
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later
+- PowerShell 7 (`pwsh`) on Windows, used by the `azd` hooks in `azure.yaml`
+- A Dataverse environment and an account permitted to register organization-scoped events
+- For local development: [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite)
+- The [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli) with `connection authenticate` support:
+
+  ```bash
+  curl -fsSL https://aka.ms/connector-namespace-cli-install | sh
+  ```
+
+  ```powershell
+  irm https://aka.ms/connector-namespace-cli-install-ps | iex
+  ```
+
+## Deploy to Azure
+
+```bash
+cd dataverseApp/polling
 az login
-az extension add --name connector-namespace
 azd auth login
-azd env new <unique-dataverse-polling-environment>
+azd env new dataverse-polling
 azd up
 ```
 
-Bicep provisions the Function App, storage, monitoring, Connector Namespace,
-`commondataservice` connection, and connection access policies for the namespace,
-Function App, and deployer identities. Packaging, provisioning, and deployment run
-sequentially so the deployment progress display finishes before interactive setup.
-The postdeploy hook uses `az connector-namespace connection authenticate` when the
-connection is not already `Connected`. In your normal browser, click **Continue**
-on the local sign-in page and complete consent; CLI instructions and errors remain
-visible in the terminal. The CLI handles callback capture and consent-code
-confirmation without replacing the provisioned access policies. This requires a
-`connector-namespace` extension version with `connection authenticate` support.
-The hook then verifies `Connected` and collects actual environment/table selectors
-through connector metadata and authenticated pickers.
+Complete the Dataverse OAuth sign-in in your browser when prompted, then answer the environment, table, scope, and action pickers in the terminal. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. Use a different azd environment from the webhook sample. To retry an interrupted trigger setup, run `azd provision triggers`, `azd provision app`, and `azd deploy`.
 
-During consent, the terminal checks Azure connection status every 10 seconds.
-A popup that stays open is not proof of failure: wait for **authentication
-confirmed: Azure connection is Connected**, then close the sign-in windows and
-continue in the terminal. Setup does not wait for a missing browser redirect once
-Azure confirms the connection.
+## Optional configuration
 
-If an earlier deployment stopped during consent or obscured a source-selection
-prompt, rerun `azd hooks run postdeploy` from this folder without redeploying.
-An already-connected connection is reused without another browser sign-in.
+| Setting / option | Purpose |
+| --- | --- |
+| `AZURE_LOCATION` | Function App region; prompted if unset |
+| `CONNECTOR_NAMESPACE_LOCATION` | Connector Namespace region; default `brazilsouth` |
+| `POLLING_TRIGGER_INPUTS` | Saved trigger selections, reused on reruns; clear with `azd env set POLLING_TRIGGER_INPUTS=` and rerun `azd provision triggers` to select again |
+| `<Function>TriggerConfigName` | Trigger configuration name per function (see `local.settings.example.json`) |
+| `AzureWebJobs.<Function>.Disabled` | Set in Function App infrastructure; `true` for skipped triggers |
 
-Setup covers all five events by default: row added, row modified,
-row deleted, combined row changes, and action performed. The combined subscription
-uses `message=7` and `scope=4` in its body. Setup collects the actual environment,
-table, and action selectors needed for each event, then creates selected **Poll**
-trigger configurations, derives their endpoint from the service, and applies
-all config-name settings and managed-identity authentication settings to the
-Function App. No Dataverse opt-in flags are required. It never uses webhook
-`notificationDetails` or requests a Function system key.
+Setup prompts only for required selectors. If a picker returns no choices, enter the actual connector identifier, or leave it blank to skip that trigger; skipped functions and any existing sample-owned trigger configurations are disabled. Run `azd provision app` and `azd deploy` after changing selections. Action-performed needs a real catalog, category, table, and action available to the signed-in user.
 
-Only required fields and their selector dependencies are prompted, for example
-Environment, Table name, Scope for separate-row events, and Action name.
-The separate-row events use the portal's `SubscribeOn*Items` operations and
-`GetDataSets_V2` environment picker, not the admin-only `GetOn*Items_V2` operations.
-The connector metadata still marks the portal's separate-row operations deprecated.
-Optional filters use connector defaults
-or remain unset; previously saved explicit values are preserved. If a picker has
-no usable choices, enter the actual connector identifier manually (not a display
-name), or leave it blank to skip that trigger and continue with the others.
-Skipped listeners are disabled. If every trigger is skipped, setup stops without
-changing trigger configurations, app settings, or saved selections.
+## Local development
 
-A fresh `local.settings.json` is created with the endpoint and config names,
-without Azure managed-identity settings; an existing file is preserved.
-The [safe template](local.settings.example.json) remains available for local-only
-setup.
+Stop the deployed Function App or use separate trigger configurations to avoid competing listeners.
 
-Selections are saved as `POLLING_TRIGGER_INPUTS` in this project's azd
-environment. Unchanged reruns reuse existing subscriptions. To change source
-selectors, run `azd env set POLLING_TRIGGER_INPUTS=`, then
-`azd hooks run postdeploy`. When upgrading from combined-only setup, clear
-`POLLING_TRIGGER_INPUTS` and run `azd up` to deploy all five listeners and configure
-their sources. Saved subsets are reused, including intentionally skipped events;
-webhook and other apps' configs are never overwritten.
+1. Prepare `local.settings.json`. `azd up` creates it with the polling endpoint and trigger config names; existing files are preserved. Otherwise run `npm run setup:local` and fill in the placeholders.
+2. Sign in with the developer identity granted connection access:
 
-Separate row events overlap the combined event, so the same row change can invoke
-both samples. Action-performed requires a real catalog, category, table, and
-action available to the signed-in user; do not guess missing identifiers.
-Picker entries without identifiers are ignored, and missing display labels use
-the identifier instead. A failed lookup or malformed list still stops setup
-before source changes; it is not treated as an empty list.
+   ```bash
+   az login
+   ```
 
-## Run and verify
+3. Start Azurite in a separate terminal:
 
-Start Azurite separately when using development storage, then:
+   ```bash
+   azurite
+   ```
 
-```powershell
-npm ci
-az login
-npm start
+4. Install, build, and start:
+
+   ```bash
+   npm ci
+   npm run build
+   func start
+   ```
+
+## Verify
+
+In [Connector Namespaces](https://connectors.azure.com/), check the connection is **Connected** and the selected trigger configurations are **Enabled**.
+
+Create, modify, and delete a test row, then look for `Received OnDataverseRowChanged trigger.` (and the matching `Received <Function> trigger.` logs for other selected triggers). Delivery is at least once; make processing idempotent.
+
+Remove this environment's Azure resources from this folder:
+
+```bash
+azd down --purge
 ```
 
-Stop the deployed listener or use separate configs when testing locally;
-listeners sharing one Poll config compete for events. The app does not require
-`EnablePollingSamples` because this entire app uses Poll delivery.
+## More
 
-Verify Connected consent, Enabled configs, and successful **source registration**
-in [Connector Namespaces](https://connectors.azure.com/). An Enabled resource by
-itself does not prove source registration or delivery succeeded. Create, modify,
-and delete a test row and check for `OnDataverseRowChanged trigger received.`
-Run `npm test` for offline registration and opaque-payload tests.
-
-Follow the [source cleanup instructions](../README.md#disabling-and-cleanup)
-before replacing subscriptions or deleting resources.
+- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Microsoft Dataverse connector reference](https://learn.microsoft.com/connectors/commondataservice/)

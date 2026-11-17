@@ -2,6 +2,41 @@
 name: onedriveapp-polling
 metadata:
     template: functions-connectors-typescript@1.0.0
+requiredVersions:
+    azd: ">= 1.33.0"
+infra:
+    layers:
+        - name: base
+          path: infra
+          module: main
+        - name: triggers
+          path: infra
+          module: poll-triggers
+          dependsOn:
+              - base
+          hooks:
+              preprovision:
+                  windows:
+                      shell: pwsh
+                      run: node ./scripts/polling-setup.mjs prepare
+                      interactive: true
+                  posix:
+                      shell: sh
+                      run: node ./scripts/polling-setup.mjs prepare
+                      interactive: true
+        - name: app
+          path: infra
+          module: function-app
+          dependsOn:
+              - triggers
+          hooks:
+              preprovision:
+                  windows:
+                      shell: pwsh
+                      run: node ./scripts/polling-setup.mjs verify
+                  posix:
+                      shell: sh
+                      run: node ./scripts/polling-setup.mjs verify
 services:
     api:
         project: .
@@ -10,24 +45,25 @@ services:
 workflows:
     up:
         - azd: package --all
-        - azd: provision
+        - azd: provision base
+        - azd: provision triggers
+        - azd: provision app
         - azd: deploy --all
 hooks:
     prepackage:
         windows:
             shell: pwsh
-            run: npm install; npm run build
+            run: |
+                npm install
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                npm run build
         posix:
             shell: sh
             run: npm install && npm run build
-    postdeploy:
+    predeploy:
         windows:
             shell: pwsh
-            run: node ./infra/scripts/postdeploy.mjs
-            interactive: true
-            continueOnError: false
+            run: node ./infra/scripts/polling-setup.mjs finish
         posix:
             shell: sh
-            run: node ./infra/scripts/postdeploy.mjs
-            interactive: true
-            continueOnError: false
+            run: node ./infra/scripts/polling-setup.mjs finish
