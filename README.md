@@ -2,8 +2,6 @@
 
 TypeScript samples for the [Azure Functions Connector Samples](https://github.com/Azure-Samples/functions-connectors/) repo, using [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors) to receive events from Microsoft 365, SharePoint, Teams, and other connectors.
 
-> Azure Functions connectors and the packages used here are in preview.
-
 ## Samples
 
 | Guide | Connector |

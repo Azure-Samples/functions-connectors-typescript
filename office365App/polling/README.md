@@ -62,7 +62,11 @@ If deployment fails because role-assignment permission is denied, ask your Azure
 | `azd env set POLLING_TRIGGER_INPUTS=` then `azd provision triggers` | Clear saved trigger selections and inputs and prompt again |
 | `azd provision triggers` | Rerun consent and trigger setup without reprovisioning base resources; then run `azd provision app` and `azd deploy` |
 
-Setup asks **Skip** or **Configure** for each optional trigger. Function App infrastructure sets `AzureWebJobs.<Function>.Disabled`, and new local settings contain the same flags, so unselected listeners stay disabled. Deselected sample-owned Poll configurations are disabled, not deleted. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+Setup first asks **Configure** or **Skip** for every trigger, then collects inputs only for selected triggers. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+
+At least one trigger must be configured. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment.
+
+**What Skip means:** The function code is still deployed, but its listener is disabled with `AzureWebJobs.<Function>.Disabled=true`. Setup creates no connector trigger configuration for that function in the namespace. If this sample previously created one, setup disables it instead of deleting it.
 
 ## Local development
 

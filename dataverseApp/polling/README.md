@@ -42,7 +42,7 @@ azd env new dataverse-polling
 azd up
 ```
 
-Complete the Dataverse OAuth sign-in in your browser when prompted, then answer the environment, table, scope, and action pickers in the terminal. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. Use a different azd environment from the webhook sample. To retry an interrupted trigger setup, run `azd provision triggers`, `azd provision app`, and `azd deploy`.
+Complete the Dataverse OAuth sign-in in your browser when prompted. First choose **Configure** or **Skip** for every trigger; at least one must be configured. Setup then collects environment, table, scope, and action inputs only for selected triggers. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. Use a different azd environment from the webhook sample. To retry an interrupted trigger setup, run `azd provision triggers`, `azd provision app`, and `azd deploy`.
 
 ### Azure role-assignment permissions
 
@@ -62,7 +62,11 @@ If deployment fails because role-assignment permission is denied, ask your Azure
 | `<Function>TriggerConfigName` | Trigger configuration name per function (see `local.settings.example.json`) |
 | `AzureWebJobs.<Function>.Disabled` | Set in Function App infrastructure; `true` for skipped triggers |
 
-Setup prompts only for required selectors. If a picker returns no choices, enter the actual connector identifier, or leave it blank to skip that trigger; skipped functions and any existing sample-owned trigger configurations are disabled. Run `azd provision app` and `azd deploy` after changing selections. Action-performed needs a real catalog, category, table, and action available to the signed-in user.
+Setup prompts only for required selectors. If a picker returns no choices, enter the actual connector identifier, or leave it blank to skip that trigger. Run `azd provision app` and `azd deploy` after changing selections. Action-performed needs a real catalog, category, table, and action available to the signed-in user.
+
+At least one trigger must be configured. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment.
+
+**What Skip means:** The function code is still deployed, but its listener is disabled with `AzureWebJobs.<Function>.Disabled=true`. Setup creates no connector trigger configuration for that function in the namespace. If this sample previously created one, setup disables it instead of deleting it.
 
 ## Local development
 

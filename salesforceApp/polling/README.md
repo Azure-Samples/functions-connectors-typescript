@@ -40,7 +40,7 @@ Use an interactive terminal and a different azd environment from webhook. This f
 
 The connection uses Salesforce's connector parameter set named `BasicAuthentication`, matching the webhook sample; authorization still uses hosted browser consent, not credentials stored in source. The terminal checks Azure connection status every 10 seconds during consent and explicitly confirms when authentication succeeds, even if the browser window does not update. You can then close the sign-in windows.
 
-Setup uses live connector metadata and authenticated pickers to select the Salesforce object for each trigger. Bicep creates Poll configurations without webhook `notificationDetails` and applies the service-derived endpoint, trigger names, and `ConnectorNamespace__credential=managedidentity` when provisioning the Function App.
+Setup first asks **Configure** or **Skip** for every trigger; at least one must be configured. It then uses live connector metadata and authenticated pickers to select the Salesforce object only for selected triggers. Bicep creates Poll configurations without webhook `notificationDetails` and applies the service-derived endpoint, trigger names, and `ConnectorNamespace__credential=managedidentity` when provisioning the Function App.
 
 ### Azure role-assignment permissions
 
@@ -59,7 +59,11 @@ If deployment fails because role-assignment permission is denied, ask your Azure
 | `azd env set POLLING_TRIGGER_INPUTS ""` | Clear saved selections before rerunning `azd provision triggers` |
 | `azd hooks run predeploy` | Verify provisioned triggers and recreate missing local settings |
 
-Selections are saved as `POLLING_TRIGGER_INPUTS` in this azd environment. Reruns reuse unchanged subscriptions. Webhook configurations and configurations owned by other apps are never overwritten. Existing webhook deployments are not modified or migrated.
+Reruns reuse unchanged subscriptions. Webhook configurations and configurations owned by other apps are never overwritten. Existing webhook deployments are not modified or migrated.
+
+At least one trigger must be configured. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment.
+
+**What Skip means:** The function code is still deployed, but its listener is disabled with `AzureWebJobs.<Function>.Disabled=true`. Setup creates no connector trigger configuration for that function in the namespace. If this sample previously created one, setup disables it instead of deleting it.
 
 ## Local development
 
@@ -76,7 +80,7 @@ Stop the deployed Function App first, or use a separate environment, to avoid co
    func start
    ```
 
-The host needs the preview Connector extension bundle specified in `host.json` with Poll delivery support. No public callback, Function key, or tunnel is needed. Never commit local settings or credentials.
+The host needs the extension bundle specified in `host.json` with Poll delivery support. No public callback, Function key, or tunnel is needed. Never commit local settings or credentials.
 
 ## Verify
 

@@ -65,7 +65,11 @@ Set environment values with `azd env set <setting> <value>` before `azd up`.
 | `POLLING_TRIGGER_INPUTS` | Saved source selections, reused on redeployment; clear it with `azd env set POLLING_TRIGGER_INPUTS=` to choose again |
 | `azd provision triggers` | Rerun consent, source selection, and trigger setup without reprovisioning base resources; then run `azd provision app` and `azd deploy` |
 
-Setup attempts to configure the five create/update triggers. For each opt-in trigger, it prompts **Skip** or **Configure**; skipped triggers get `AzureWebJobs.<Function>.Disabled=true` and any existing configuration is disabled. Optional inputs such as **Folder** or **Limit Columns by View** can be skipped to use connector defaults. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+Setup first asks **Configure** or **Skip** for every trigger, then collects inputs only for selected triggers; at least one must be configured. Optional inputs such as **Folder** or **Limit Columns by View** can be skipped to use connector defaults. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+
+At least one trigger must be configured. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment.
+
+**What Skip means:** The function code is still deployed, but its listener is disabled with `AzureWebJobs.<Function>.Disabled=true`. Setup creates no connector trigger configuration for that function in the namespace. If this sample previously created one, setup disables it instead of deleting it.
 
 ## Local development
 

@@ -36,7 +36,7 @@ azd env new azureblob-polling
 azd up
 ```
 
-Use a different environment from the webhook sample. Deployment provisions a separate monitored storage account with a `testcontainer` container and configures the connection with the namespace's managed identity, so no OAuth consent or source prompts are needed. After the connection is ready, infrastructure provisions the Poll trigger as **Enabled**, then deploys the Function App with the trigger's polling endpoint before deploying the code. Storage role assignments can take up to 10 minutes to propagate.
+Use a different environment from the webhook sample. Deployment provisions a separate monitored storage account with a `testcontainer` container and configures the connection with the namespace's managed identity, so no OAuth consent or source prompts are needed. Setup asks **Configure** or **Skip** for the trigger; choose **Configure** to continue because at least one trigger is required. After the connection is ready, infrastructure provisions the selected Poll trigger as **Enabled**, then deploys the Function App with the trigger's polling endpoint before deploying the code. Storage role assignments can take up to 10 minutes to propagate.
 
 ### Azure role-assignment permissions
 
@@ -57,6 +57,10 @@ Set environment values with `azd env set <setting> <value>` before `azd up`.
 | `azd provision triggers` | Reapply trigger setup without reprovisioning the base resources; then run `azd provision app` and `azd deploy` |
 
 The trigger configuration name comes from the `OnAzureBlobUpdatedFileTriggerConfigName` setting in `local.settings.example.json`; the Function App infrastructure applies it and the trigger layer's polling endpoint with managed-identity authentication.
+
+At least one trigger must be configured. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment.
+
+**What Skip means:** The function code is still deployed, but its listener is disabled with `AzureWebJobs.<Function>.Disabled=true`. Setup creates no connector trigger configuration for that function in the namespace. If this sample previously created one, setup disables it instead of deleting it.
 
 ## Local development
 
