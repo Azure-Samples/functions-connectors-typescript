@@ -43,6 +43,14 @@ azd up
 
 Use a different environment from the webhook sample. Complete OAuth consent in the browser opened by setup, then browse to a folder and choose its **Use** entry; the drive root placeholder `root` cannot be selected. Infrastructure provisions all four Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code.
 
+### Azure role-assignment permissions
+
+Choose **Yes** to continue if `azd up` warns **"Role assignment permissions at the target scopes were not verified"** and your deploying account has the permission described below. This warning means azd could not verify your access, not that access was denied.
+
+Deployment grants the Function App's managed identity access to the storage account created for its code and runtime data. Your deploying account needs `Microsoft.Authorization/roleAssignments/write`, provided by Owner, User Access Administrator, or Role Based Access Control Administrator on that storage account or its parent resource group/subscription. Contributor alone is insufficient.
+
+If deployment fails because role-assignment permission is denied, ask your Azure administrator to grant access or create the role assignments.
+
 ## Optional configuration
 
 Set environment values with `azd env set <setting> <value>` before `azd up`.
@@ -96,5 +104,5 @@ azd down --purge
 
 ## More
 
-- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Connector trigger payloads for Azure Functions](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
 - [OneDrive for Business connector reference](https://learn.microsoft.com/connectors/onedriveforbusiness/)

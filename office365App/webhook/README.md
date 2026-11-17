@@ -45,6 +45,14 @@ azd up
 
 Complete the OAuth sign-in opened by `azd up` with the mailbox account to monitor. The postdeploy hook then creates one trigger configuration per function, using `Inbox` for email triggers and `Calendar` for calendar triggers, with callbacks to the deployed Function App. Use a different azd environment from polling.
 
+### Azure role-assignment permissions
+
+Choose **Yes** to continue if `azd up` warns **"Role assignment permissions at the target scopes were not verified"** and your deploying account has the permission described below. This warning means azd could not verify your access, not that access was denied.
+
+Deployment grants the Function App's managed identity access to the storage account created for its code and runtime data. Your deploying account needs `Microsoft.Authorization/roleAssignments/write`, provided by Owner, User Access Administrator, or Role Based Access Control Administrator on that storage account or its parent resource group/subscription. Contributor alone is insufficient.
+
+If deployment fails because role-assignment permission is denied, ask your Azure administrator to grant access or create the role assignments.
+
 ## Optional configuration
 
 | Setting / option | Purpose |
@@ -93,5 +101,5 @@ Run `azd down --purge` when finished to remove deployed resources.
 
 ## More
 
-- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Connector trigger payloads for Azure Functions](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
 - [Office 365 Outlook connector reference](https://learn.microsoft.com/connectors/office365/)

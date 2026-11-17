@@ -43,6 +43,14 @@ Complete consent in your browser with the account whose Planner tasks you want t
 
 Setup uses live connector metadata and authenticated pickers for the group and plan selectors required by each trigger. Bicep creates Poll configurations without webhook `notificationDetails` and applies the service-derived endpoint, trigger names, and `ConnectorNamespace__credential=managedidentity` when provisioning the Function App.
 
+### Azure role-assignment permissions
+
+Choose **Yes** to continue if `azd up` warns **"Role assignment permissions at the target scopes were not verified"** and your deploying account has the permission described below. This warning means azd could not verify your access, not that access was denied.
+
+Deployment grants the Function App's managed identity access to the storage account created for its code and runtime data. Your deploying account needs `Microsoft.Authorization/roleAssignments/write`, provided by Owner, User Access Administrator, or Role Based Access Control Administrator on that storage account or its parent resource group/subscription. Contributor alone is insufficient.
+
+If deployment fails because role-assignment permission is denied, ask your Azure administrator to grant access or create the role assignments.
+
 ## Optional configuration
 
 | Setting / command | Purpose |
@@ -81,4 +89,4 @@ Run `azd down --purge` from this folder when finished to remove this environment
 
 - [Planner connector reference](https://learn.microsoft.com/connectors/planner/)
 - [Poll configuration contract](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery)
-- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Connector trigger payloads for Azure Functions](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
