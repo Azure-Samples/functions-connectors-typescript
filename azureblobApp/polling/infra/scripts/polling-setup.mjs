@@ -179,10 +179,11 @@ export async function setupPolling({
             };
             const selected = [];
             for (const trigger of config.triggers) {
-                if (!trigger.optional || await choose(`Configure ${trigger.functionName}?`, [
+                if (await choose(`Configure ${trigger.functionName}?`, [
                     { label: 'Skip', value: false }, { label: 'Configure', value: true },
                 ])) selected.push(trigger);
             }
+            if (!selected.length) throw new Error('Select at least one polling trigger.');
             triggers = [];
             const oneDriveFolderId = config.connectorName === 'onedriveforbusiness' ? await selectOneDriveFolder({ request, choose }) : undefined;
             for (const trigger of selected) {
@@ -225,10 +226,6 @@ export async function setupPolling({
                 throw new Error('Saved Poll inputs do not match this project. Clear POLLING_TRIGGER_INPUTS and rerun setup.');
             }
         }
-        if (config.triggers.some((item) => !item.optional && !triggers.some((trigger) => trigger.functionName === item.functionName))) {
-            throw new Error('Saved Poll inputs omit a required listener. Clear POLLING_TRIGGER_INPUTS and rerun setup.');
-        }
-
         const existing = new Map();
         let page = `${root}/triggerConfigs`;
         while (page) {

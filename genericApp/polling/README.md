@@ -49,6 +49,10 @@ func azure functionapp publish <function-app-name>
 
 Local settings are not published. Use separate trigger configurations for separate delivery environments.
 
+### Azure role-assignment permissions
+
+This sample uses existing resources and does not run `azd up`. The account granting the Function App's managed identity access to storage needs `Microsoft.Authorization/roleAssignments/write`, provided by Owner, User Access Administrator, or Role Based Access Control Administrator on that storage account or its parent resource group/subscription. Contributor alone is insufficient. If access is denied, ask your Azure administrator to grant access or create the role assignments.
+
 ## Optional configuration
 
 | Setting / option | Purpose |
@@ -96,6 +100,6 @@ Cause an event for the configured operation, then look for `OnGenericConnectorEv
 
 ## More
 
-- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Connector trigger payloads for Azure Functions](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
 - [Connector trigger configuration](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md)
 - [Connector reference](https://learn.microsoft.com/connectors/connector-reference/)

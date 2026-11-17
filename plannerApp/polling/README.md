@@ -41,7 +41,15 @@ Use an interactive terminal and a different azd environment from webhook. This f
 
 Complete consent in your browser with the account whose Planner tasks you want to monitor. The terminal checks Azure connection status every 10 seconds during consent and explicitly confirms when authentication succeeds, even if the browser window does not update. You can then close the sign-in windows.
 
-Setup uses live connector metadata and authenticated pickers for the group and plan selectors required by each trigger. Bicep creates Poll configurations without webhook `notificationDetails` and applies the service-derived endpoint, trigger names, and `ConnectorNamespace__credential=managedidentity` when provisioning the Function App.
+Setup first asks **Configure** or **Skip** for every trigger; at least one must be configured. It then uses live connector metadata and authenticated pickers for the group and plan selectors required by selected triggers. Bicep creates Poll configurations without webhook `notificationDetails` and applies the service-derived endpoint, trigger names, and `ConnectorNamespace__credential=managedidentity` when provisioning the Function App.
+
+### Azure role-assignment permissions
+
+Choose **Yes** to continue if `azd up` warns **"Role assignment permissions at the target scopes were not verified"** and your deploying account has the permission described below. This warning means azd could not verify your access, not that access was denied.
+
+Deployment grants the Function App's managed identity access to the storage account created for its code and runtime data. Your deploying account needs `Microsoft.Authorization/roleAssignments/write`, provided by Owner, User Access Administrator, or Role Based Access Control Administrator on that storage account or its parent resource group/subscription. Contributor alone is insufficient.
+
+If deployment fails because role-assignment permission is denied, ask your Azure administrator to grant access or create the role assignments.
 
 ## Optional configuration
 
@@ -52,7 +60,11 @@ Setup uses live connector metadata and authenticated pickers for the group and p
 | `azd env set POLLING_TRIGGER_INPUTS ""` | Clear saved selections before rerunning `azd provision triggers` |
 | `azd hooks run predeploy` | Verify provisioned triggers and recreate missing local settings |
 
-Selections are saved as `POLLING_TRIGGER_INPUTS` in this azd environment. Reruns reuse unchanged subscriptions. Webhook configurations and configurations owned by other apps are never overwritten. Existing webhook deployments are not modified or migrated.
+Reruns reuse unchanged subscriptions. Webhook configurations and configurations owned by other apps are never overwritten. Existing webhook deployments are not modified or migrated.
+
+At least one trigger must be configured. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment.
+
+**What Skip means:** The function code is still deployed, but its listener is disabled with `AzureWebJobs.<Function>.Disabled=true`. Setup creates no connector trigger configuration for that function in the namespace. If this sample previously created one, setup disables it instead of deleting it.
 
 ## Local development
 
@@ -69,7 +81,7 @@ Stop the deployed Function App first, or use a separate environment, to avoid co
    func start
    ```
 
-The host needs the preview Connector extension bundle specified in `host.json` with Poll delivery support. No public callback, Function key, or tunnel is needed. Never commit local settings or credentials.
+The host needs the extension bundle specified in `host.json` with Poll delivery support. No public callback, Function key, or tunnel is needed. Never commit local settings or credentials.
 
 ## Verify
 
@@ -81,4 +93,4 @@ Run `azd down --purge` from this folder when finished to remove this environment
 
 - [Planner connector reference](https://learn.microsoft.com/connectors/planner/)
 - [Poll configuration contract](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md#poll-delivery)
-- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Connector trigger payloads for Azure Functions](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)

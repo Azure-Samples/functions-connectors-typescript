@@ -45,6 +45,10 @@ func azure functionapp publish <function-app-name>
 
 Point each trigger configuration's `notificationDetails.callbackUrl` at `https://<function-app-host>/runtime/webhooks/connector?functionName=OnGenericConnectorEvent` and set `notificationDetails.authentication` to `type: "QueryString"`, `name: "code"`, with the host's `connector_extension` system key as `value`. Never commit keys. No Poll endpoint or trigger-name app settings are required.
 
+### Azure role-assignment permissions
+
+This sample uses existing resources and does not run `azd up`. The account granting the Function App's managed identity access to storage needs `Microsoft.Authorization/roleAssignments/write`, provided by Owner, User Access Administrator, or Role Based Access Control Administrator on that storage account or its parent resource group/subscription. Contributor alone is insufficient. If access is denied, ask your Azure administrator to grant access or create the role assignments.
+
 ## Optional configuration
 
 | Setting / option | Purpose |
@@ -81,6 +85,6 @@ Cause a real source event for the configured operation, then look for `OnGeneric
 
 ## More
 
-- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Connector trigger payloads for Azure Functions](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
 - [Connector trigger configuration](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/connector-trigger-configuration.md)
 - [Connector reference](https://learn.microsoft.com/connectors/connector-reference/)

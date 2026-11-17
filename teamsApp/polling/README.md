@@ -8,7 +8,7 @@ Azure Functions sample for the [Microsoft Teams connector](https://learn.microso
 | `OnNewChannelMessageMentioningMe` | [`OnNewChannelMessageMentioningMe`](https://learn.microsoft.com/connectors/teams/#when-i-am-mentioned-in-a-channel-message) | Channel message mentioning the connection user |
 | `OnGroupMembershipAdd` | [`OnGroupMembershipAdd`](https://learn.microsoft.com/connectors/teams/#when-a-new-team-member-is-added) | Team member added |
 | `OnGroupMembershipRemoval` | [`OnGroupMembershipRemoval`](https://learn.microsoft.com/connectors/teams/#when-a-new-team-member-is-removed) | Team member removed |
-| `OnWebhookChatMessage` | [`WebhookChatMessageTrigger`](https://learn.microsoft.com/connectors/teams/#when-a-new-chat-message-is-added) | New chat message (opt-in, RAW) |
+| `OnWebhookChatMessage` | [`WebhookChatMessageTrigger`](https://learn.microsoft.com/connectors/teams/#when-a-new-chat-message-is-added) | New message in any chat of the connection user (opt-in, RAW) |
 | `OnWebhookNewMessage` | [`WebhookNewMessageTrigger`](https://learn.microsoft.com/connectors/teams/#when-a-new-message-is-added-to-a-chat-or-channel) | New chat/channel message (opt-in, RAW) |
 | `OnWebhookAtMention` | [`WebhookAtMentionTrigger`](https://learn.microsoft.com/connectors/teams/#when-i'm-@mentioned) | @mention (opt-in, RAW) |
 | `OnWebhookKeyword` | [`WebhookKeywordTrigger`](https://learn.microsoft.com/connectors/teams/#when-keywords-are-mentioned) | Keyword mention (opt-in, RAW) |
@@ -25,6 +25,7 @@ Azure Functions sample for the [Microsoft Teams connector](https://learn.microso
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) 2.75.0 or later, signed in with permission to read and write trigger configurations in the Connector Namespace
 - PowerShell 7 (`pwsh`) on Windows, used by the `azd` hooks
 - A Teams account with team/channel access and permission to authorize the connection
+- Appropriate meeting licenses and policies for recording/transcript triggers
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and Azurite for local development
 - [`connector-namespace` CLI extension](https://github.com/Azure/Connectors/tree/main/public-preview/connector-namespace-cli):
 
@@ -50,16 +51,26 @@ azd up
 
 Run `azd up` in an interactive terminal: setup opens the OAuth sign-in, then collects the team, channel, and operation-specific inputs through live connector pickers. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. Use a different azd environment from webhook.
 
+### Azure role-assignment permissions
+
+Choose **Yes** to continue if `azd up` warns **"Role assignment permissions at the target scopes were not verified"** and your deploying account has the permission described below. This warning means azd could not verify your access, not that access was denied.
+
+Deployment grants the Function App's managed identity access to the storage account created for its code and runtime data. Your deploying account needs `Microsoft.Authorization/roleAssignments/write`, provided by Owner, User Access Administrator, or Role Based Access Control Administrator on that storage account or its parent resource group/subscription. Contributor alone is insufficient.
+
+If deployment fails because role-assignment permission is denied, ask your Azure administrator to grant access or create the role assignments.
+
 ## Optional configuration
 
 | Setting / option | Purpose |
 | --- | --- |
 | `CONNECTOR_NAMESPACE_LOCATION` | Namespace region; defaults to `brazilsouth` |
-| Opt-in trigger prompts | Choose **Skip** or **Configure** for each of the seven RAW triggers during setup |
+| Trigger selection prompts | First choose **Configure** or **Skip** for every trigger, then enter inputs only for selected triggers |
 | `azd env set POLLING_TRIGGER_INPUTS=` then `azd provision triggers` | Clear saved trigger selections and inputs and prompt again |
 | `azd provision triggers` | Rerun consent and trigger setup without reprovisioning base resources; then run `azd provision app` and `azd deploy` |
 
-The four typed triggers are always configured. Function App infrastructure sets `AzureWebJobs.<Function>.Disabled`, and new local settings contain the same flags, so unselected listeners stay disabled; deselected sample-owned Poll configurations are disabled, not deleted. `OnWebhookChatMessage` monitors all chats of the connection user, and recording/transcript triggers need appropriate meeting licenses and policies. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+At least one trigger must be configured. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment.
+
+**What Skip means:** The function code is still deployed, but its listener is disabled with `AzureWebJobs.<Function>.Disabled=true`. Setup creates no connector trigger configuration for that function in the namespace. If this sample previously created one, setup disables it instead of deleting it.
 
 ## Local development
 
@@ -103,5 +114,5 @@ Run `azd down --purge` when finished to remove deployed resources.
 
 ## More
 
-- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md#microsoft-teams-connector)
+- [Connector trigger payloads for Azure Functions](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md#microsoft-teams-connector)
 - [Microsoft Teams connector reference](https://learn.microsoft.com/connectors/teams/)

@@ -45,6 +45,14 @@ azd up
 
 Run `azd up` in an interactive terminal: setup opens the OAuth sign-in for the mailbox account to monitor, then prompts for inputs such as the calendar through live connector pickers. Infrastructure provisions selected Poll triggers as **Enabled** after consent, then deploys the Function App with the trigger's polling endpoint before deploying the code. Use a different azd environment from webhook.
 
+### Azure role-assignment permissions
+
+Choose **Yes** to continue if `azd up` warns **"Role assignment permissions at the target scopes were not verified"** and your deploying account has the permission described below. This warning means azd could not verify your access, not that access was denied.
+
+Deployment grants the Function App's managed identity access to the storage account created for its code and runtime data. Your deploying account needs `Microsoft.Authorization/roleAssignments/write`, provided by Owner, User Access Administrator, or Role Based Access Control Administrator on that storage account or its parent resource group/subscription. Contributor alone is insufficient.
+
+If deployment fails because role-assignment permission is denied, ask your Azure administrator to grant access or create the role assignments.
+
 ## Optional configuration
 
 | Setting / option | Purpose |
@@ -54,7 +62,11 @@ Run `azd up` in an interactive terminal: setup opens the OAuth sign-in for the m
 | `azd env set POLLING_TRIGGER_INPUTS=` then `azd provision triggers` | Clear saved trigger selections and inputs and prompt again |
 | `azd provision triggers` | Rerun consent and trigger setup without reprovisioning base resources; then run `azd provision app` and `azd deploy` |
 
-Setup asks **Skip** or **Configure** for each optional trigger. Function App infrastructure sets `AzureWebJobs.<Function>.Disabled`, and new local settings contain the same flags, so unselected listeners stay disabled. Deselected sample-owned Poll configurations are disabled, not deleted. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+Setup first asks **Configure** or **Skip** for every trigger, then collects inputs only for selected triggers. Trigger configuration names come from the `<Function>TriggerConfigName` settings in `local.settings.example.json`.
+
+At least one trigger must be configured. Selections are saved as `POLLING_TRIGGER_INPUTS` in the azd environment and reused on redeployment.
+
+**What Skip means:** The function code is still deployed, but its listener is disabled with `AzureWebJobs.<Function>.Disabled=true`. Setup creates no connector trigger configuration for that function in the namespace. If this sample previously created one, setup disables it instead of deleting it.
 
 ## Local development
 
@@ -98,5 +110,5 @@ Run `azd down --purge` when finished to remove deployed resources.
 
 ## More
 
-- [Operations to Functions Signature Mapping](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
+- [Connector trigger payloads for Azure Functions](https://github.com/Azure/azure-functions-connector-extension/blob/main/docs/operations-functions-match.md)
 - [Office 365 Outlook connector reference](https://learn.microsoft.com/connectors/office365/)
