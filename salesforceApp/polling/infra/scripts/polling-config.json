@@ -1,0 +1,15 @@
+{
+    "connectorName": "salesforce",
+    "displayName": "Salesforce",
+    "authenticationType": "BasicAuthentication",
+    "triggers": [
+        {
+            "functionName": "OnSalesforceNewItems",
+            "operationName": "GetOnNewItems"
+        },
+        {
+            "functionName": "OnSalesforceUpdatedItems",
+            "operationName": "GetOnUpdatedItems"
+        }
+    ]
+}
