@@ -4,6 +4,7 @@ Choose how the Connector Namespace delivers events to Azure Functions:
 
 | Sample | Delivery | Local development |
 | --- | --- | --- |
+| [Polling](polling/) | Host receives events from the namespace | No public callback or tunnel |
 | [Webhook](webhook/) | Namespace calls the HTTPS callback | Public HTTPS tunnel |
 
 Samples for Microsoft Planner task triggers using the [Planner connector](https://learn.microsoft.com/connectors/planner/). See the sample README for setup and supported triggers.
