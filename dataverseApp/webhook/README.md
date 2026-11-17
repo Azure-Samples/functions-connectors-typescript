@@ -1,6 +1,6 @@
 # Microsoft Dataverse Webhook Triggers (TypeScript)
 
-Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The Connector Namespace delivers events to the function's public HTTPS callback.
 
 Each function is in its own file under `src/functions/`, uses the raw `app.connectorTrigger` API with an `unknown` payload, and logs only the trigger name.
 

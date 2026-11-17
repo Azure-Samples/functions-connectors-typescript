@@ -1,6 +1,6 @@
 # OneDrive for Business Webhook Triggers (TypeScript)
 
-Azure Functions sample for the [OneDrive for Business connector](https://learn.microsoft.com/connectors/onedriveforbusiness/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/` and logs the trigger name on receipt (for example, `OnOneDriveNewFile trigger received.`).
+Azure Functions sample for the [OneDrive for Business connector](https://learn.microsoft.com/connectors/onedriveforbusiness/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/` and logs the trigger name on receipt (for example, `OnOneDriveNewFile trigger received.`).
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

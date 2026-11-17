@@ -1,6 +1,6 @@
 # Azure Blob Storage Polling Triggers (TypeScript)
 
-Azure Functions sample for the [Azure Blob Storage connector](https://learn.microsoft.com/connectors/azureblob/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. The function is in its own file under `src/functions/`, uses the generic `connectorTrigger<BlobMetadata>` API, and logs only the trigger name and item count (`Received OnAzureBlobUpdatedFile trigger (<Count> items).`).
+Azure Functions sample for the [Azure Blob Storage connector](https://learn.microsoft.com/connectors/azureblob/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. The function is in its own file under `src/functions/`, uses the generic `connectorTrigger<BlobMetadata>` API, and logs only the trigger name and item count (`Received OnAzureBlobUpdatedFile trigger (<Count> items).`).
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

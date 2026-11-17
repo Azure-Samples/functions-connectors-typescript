@@ -1,6 +1,6 @@
 # Microsoft Dataverse Polling Triggers (TypeScript)
 
-Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). With `deliveryMode: DeliveryMode.Poll`, the host receives events outbound from the Connector Namespace; no public callback or tunnel is needed.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). With `deliveryMode: DeliveryMode.Poll`, the host receives events outbound from the Connector Namespace; no public callback or tunnel is needed.
 
 Each function is in its own file under `src/functions/`, uses the raw `app.connectorTrigger` API with an `unknown` payload, and logs only the trigger name.
 

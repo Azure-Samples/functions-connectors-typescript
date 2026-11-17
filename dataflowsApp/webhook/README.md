@@ -1,6 +1,6 @@
 # Dataflows Webhook Triggers (TypeScript)
 
-Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). It handles [Dataflows connector](https://learn.microsoft.com/connectors/dataflows/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by the dataflow name, ID, status, and start/end times.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). It handles [Dataflows connector](https://learn.microsoft.com/connectors/dataflows/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by the dataflow name, ID, status, and start/end times.
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

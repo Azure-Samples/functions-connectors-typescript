@@ -1,6 +1,6 @@
 # Planner Webhook Triggers (TypeScript)
 
-Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). It handles [Planner connector](https://learn.microsoft.com/connectors/planner/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by the task ID, title, and completion, plan, or assignment details.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). It handles [Planner connector](https://learn.microsoft.com/connectors/planner/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by the task ID, title, and completion, plan, or assignment details.
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 # Salesforce Webhook Triggers (TypeScript)
 
-Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). It handles [Salesforce connector](https://learn.microsoft.com/connectors/salesforce/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by each record as JSON, so use sandbox or test records.
+Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). It handles [Salesforce connector](https://learn.microsoft.com/connectors/salesforce/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by each record as JSON, so use sandbox or test records.
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 # SharePoint Online Webhook Triggers (TypeScript)
 
-Azure Functions sample for the [SharePoint Online connector](https://learn.microsoft.com/connectors/sharepointonline/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses a typed `connectors.sharepoint` helper, and logs `<FunctionName> trigger received.` followed by each record (or the ID, name, and deletion details for deletion triggers). Use a test site and non-sensitive data.
+Azure Functions sample for the [SharePoint Online connector](https://learn.microsoft.com/connectors/sharepointonline/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses a typed `connectors.sharepoint` helper, and logs `<FunctionName> trigger received.` followed by each record (or the ID, name, and deletion details for deletion triggers). Use a test site and non-sensitive data.
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

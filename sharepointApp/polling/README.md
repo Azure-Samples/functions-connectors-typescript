@@ -1,6 +1,6 @@
 # SharePoint Online Polling Triggers (TypeScript)
 
-Azure Functions sample for the [SharePoint Online connector](https://learn.microsoft.com/connectors/sharepointonline/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. Each function is in its own file under `src/functions/`, uses a typed `connectors.sharepoint` helper, and logs only the trigger name and item count (for example, `Received OnSharepointNewItems trigger (2 items).`).
+Azure Functions sample for the [SharePoint Online connector](https://learn.microsoft.com/connectors/sharepointonline/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. Each function is in its own file under `src/functions/`, uses a typed `connectors.sharepoint` helper, and logs only the trigger name and item count (for example, `Received OnSharepointNewItems trigger (2 items).`).
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

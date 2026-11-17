@@ -1,6 +1,6 @@
 # Office 365 Outlook Webhook Triggers (TypeScript)
 
-Azure Functions sample for the [Office 365 Outlook connector](https://learn.microsoft.com/connectors/office365/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/` and logs `<FunctionName> trigger received.` followed by email or event metadata, so use a test account.
+Azure Functions sample for the [Office 365 Outlook connector](https://learn.microsoft.com/connectors/office365/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/` and logs `<FunctionName> trigger received.` followed by email or event metadata, so use a test account.
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

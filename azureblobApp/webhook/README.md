@@ -1,6 +1,6 @@
 # Azure Blob Storage Webhook Triggers (TypeScript)
 
-Azure Functions sample for the [Azure Blob Storage connector](https://learn.microsoft.com/connectors/azureblob/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) and [@azure/connectors](https://www.npmjs.com/package/@azure/connectors). The Connector Namespace delivers events to the function's public HTTPS callback. The function is in its own file under `src/functions/`, uses the generic `connectorTrigger<BlobMetadata>` API, and logs `OnAzureBlobUpdatedFile trigger received.`, each blob's name, path, size, and last-modified time, and the batch count.
+Azure Functions sample for the [Azure Blob Storage connector](https://learn.microsoft.com/connectors/azureblob/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The Connector Namespace delivers events to the function's public HTTPS callback. The function is in its own file under `src/functions/`, uses the generic `connectorTrigger<BlobMetadata>` API, and logs `OnAzureBlobUpdatedFile trigger received.`, each blob's name, path, size, and last-modified time, and the batch count.
 
 | Function | Connector operation | Description |
 | --- | --- | --- |
