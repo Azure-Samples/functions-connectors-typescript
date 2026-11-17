@@ -1,0 +1,26 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "ConnectorNamespace__pollingEndpoint": "https://<connector-namespace-host>",
+    "OnAzureDevOpsBuildCompletedTriggerConfigName": "azuredevops-onbuildcompleted",
+    "OnAzureDevOpsGitPullClosedTriggerConfigName": "azuredevops-ongitpullclosed",
+    "OnAzureDevOpsGitPullCreatedTriggerConfigName": "azuredevops-ongitpullcreated",
+    "OnAzureDevOpsGitPushTriggerConfigName": "azuredevops-ongitpush",
+    "OnAzureDevOpsTfvcCheckInTriggerConfigName": "azuredevops-ontfvccheckin",
+    "OnAzureDevOpsWorkItemAssignedTriggerConfigName": "azuredevops-onworkitemassigned",
+    "OnAzureDevOpsWorkItemClosedTriggerConfigName": "azuredevops-onworkitemclosed",
+    "OnAzureDevOpsWorkItemCreatedTriggerConfigName": "azuredevops-onworkitemcreated",
+    "OnAzureDevOpsWorkItemUpdatedTriggerConfigName": "azuredevops-onworkitemupdated",
+    "AzureWebJobs.OnAzureDevOpsBuildCompleted.Disabled": "true",
+    "AzureWebJobs.OnAzureDevOpsGitPullClosed.Disabled": "true",
+    "AzureWebJobs.OnAzureDevOpsGitPullCreated.Disabled": "true",
+    "AzureWebJobs.OnAzureDevOpsGitPush.Disabled": "true",
+    "AzureWebJobs.OnAzureDevOpsTfvcCheckIn.Disabled": "true",
+    "AzureWebJobs.OnAzureDevOpsWorkItemAssigned.Disabled": "true",
+    "AzureWebJobs.OnAzureDevOpsWorkItemClosed.Disabled": "true",
+    "AzureWebJobs.OnAzureDevOpsWorkItemCreated.Disabled": "true",
+    "AzureWebJobs.OnAzureDevOpsWorkItemUpdated.Disabled": "true"
+  }
+}

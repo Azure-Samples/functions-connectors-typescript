@@ -1,0 +1,52 @@
+{
+    "connectorName": "visualstudioteamservices",
+    "displayName": "Azure DevOps",
+    "authenticationType": "EntraOAuth",
+    "triggers": [
+        {
+            "functionName": "OnAzureDevOpsBuildCompleted",
+            "operationName": "OnBuildCompleted",
+            "optional": true
+        },
+        {
+            "functionName": "OnAzureDevOpsGitPullClosed",
+            "operationName": "OnGitPullClosed",
+            "optional": true
+        },
+        {
+            "functionName": "OnAzureDevOpsGitPullCreated",
+            "operationName": "OnGitPullCreated",
+            "optional": true
+        },
+        {
+            "functionName": "OnAzureDevOpsGitPush",
+            "operationName": "OnGitPush",
+            "optional": true
+        },
+        {
+            "functionName": "OnAzureDevOpsTfvcCheckIn",
+            "operationName": "OnTfvcCheckIn",
+            "optional": true
+        },
+        {
+            "functionName": "OnAzureDevOpsWorkItemAssigned",
+            "operationName": "OnWorkItemAssignedV2",
+            "optional": true
+        },
+        {
+            "functionName": "OnAzureDevOpsWorkItemClosed",
+            "operationName": "OnWorkItemClosedV2",
+            "optional": true
+        },
+        {
+            "functionName": "OnAzureDevOpsWorkItemCreated",
+            "operationName": "OnWorkItemCreatedV2",
+            "optional": true
+        },
+        {
+            "functionName": "OnAzureDevOpsWorkItemUpdated",
+            "operationName": "OnWorkItemUpdatedV2",
+            "optional": true
+        }
+    ]
+}
