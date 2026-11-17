@@ -1,6 +1,6 @@
 # Azure DevOps Polling Triggers (TypeScript)
 
-Azure Functions sample for the [Azure DevOps connector](https://learn.microsoft.com/connectors/visualstudioteamservices/) using `@azure/functions-extensions-connectors` and `@azure/connectors` with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback, Function key, or tunnel is required. Each trigger has its own file under `src/functions/`, logs only the trigger name and item count, and returns `context.rawPayload`.
+Azure Functions sample for the [Azure DevOps connector](https://learn.microsoft.com/connectors/visualstudioteamservices/) using `@azure/functions-extensions-connectors` with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback, Function key, or tunnel is required. Each trigger has its own file under `src/functions/`, logs only the trigger name and item count, and returns `context.rawPayload`.
 
 | Function | Connector operation | Description |
 | --- | --- | --- |

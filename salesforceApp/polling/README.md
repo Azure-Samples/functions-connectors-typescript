@@ -1,6 +1,6 @@
 # Salesforce Polling Triggers (TypeScript)
 
-Azure Functions sample for the [Salesforce connector](https://learn.microsoft.com/connectors/salesforce/) using `@azure/functions-extensions-connectors` and `@azure/connectors` with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback, Function key, or tunnel is required. Each function has its own file under `src/functions/`, uses the named Salesforce SDK helper, logs only the trigger name and record count, and returns `context.rawPayload`.
+Azure Functions sample for the [Salesforce connector](https://learn.microsoft.com/connectors/salesforce/) using `@azure/functions-extensions-connectors` with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback, Function key, or tunnel is required. Each function has its own file under `src/functions/`, uses the named Salesforce SDK helper, logs only the trigger name and record count, and returns `context.rawPayload`.
 
 | Function | Connector operation | Description |
 | --- | --- | --- |
