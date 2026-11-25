@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Office 365 Outlook webhook"
+description: Receive Office 365 Outlook email and calendar events with webhooks in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-office365-webhook-typescript
+---
+-->
+
 # Office 365 Outlook Webhook Triggers (TypeScript)
 
 Azure Functions sample for the [Office 365 Outlook connector](https://learn.microsoft.com/connectors/office365/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/` and logs `<FunctionName> trigger received.` followed by email or event metadata, so use a test account.

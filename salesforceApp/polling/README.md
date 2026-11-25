@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Salesforce polling"
+description: Receive Salesforce record events with polling in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-salesforce-polling-typescript
+---
+-->
+
 # Salesforce Polling Triggers (TypeScript)
 
 Azure Functions sample for the [Salesforce connector](https://learn.microsoft.com/connectors/salesforce/) using `@azure/functions-extensions-connectors` with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback, Function key, or tunnel is required. Each function has its own file under `src/functions/`, uses the named Salesforce SDK helper, logs only the trigger name and record count, and returns `context.rawPayload`.

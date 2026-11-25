@@ -1,5 +1,7 @@
 # Azure Functions Connector Samples (TypeScript)
 
+[![CI](https://github.com/Azure-Samples/functions-connectors-typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/Azure-Samples/functions-connectors-typescript/actions/workflows/ci.yml)
+
 TypeScript samples for the [Azure Functions Connector Samples](https://github.com/Azure-Samples/functions-connectors/) repo, using [`@azure/functions-extensions-connectors`](https://www.npmjs.com/package/@azure/functions-extensions-connectors) to receive events from Microsoft 365, SharePoint, Teams, and other connectors.
 
 ## Samples
@@ -19,6 +21,14 @@ TypeScript samples for the [Azure Functions Connector Samples](https://github.co
 | [Generic](genericApp/README.md) | [Any connector](https://learn.microsoft.com/connectors/), using raw payloads |
 
 Each `polling/` and `webhook/` folder is a self-contained Azure Functions app with its own dependencies, source code, and README. Each trigger is an individual function in its own file under `src/functions/`. Connector-specific apps also include `azure.yaml` and `infra/`; navigate into the selected folder and run `azd up`, using a separate azd environment for each app. Generic samples use existing Azure resources and publish with Functions Core Tools instead.
+
+Microsoft Learn sample metadata is attached to the 19 connector-specific standalone polling/webhook READMEs, not the overview or generic guides. Dataflows has a webhook sample only. Metadata does not certify live connector behavior; follow each sample's verification steps.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute and [CHANGELOG.md](CHANGELOG.md) for notable changes.
+
+GitHub Actions builds/typechecks all 21 apps with Node.js 24 and their checked-in npm lockfiles, audits dependencies, and runs Gitleaks on a snapshot of the current tracked source (not Git history). CI does not sign in to Azure, deploy resources, run connector listeners, or use configured secrets.
 
 ## More triggers and operations
 

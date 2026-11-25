@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Dataflows webhook"
+description: Receive Dataflows refresh completion events with webhooks in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-dataflows-webhook-typescript
+---
+-->
+
 # Dataflows Webhook Triggers (TypeScript)
 
 Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). It handles [Dataflows connector](https://learn.microsoft.com/connectors/dataflows/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by the dataflow name, ID, status, and start/end times.

@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): SharePoint Online webhook"
+description: Receive SharePoint Online list and file events with webhooks in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-sharepoint-webhook-typescript
+---
+-->
+
 # SharePoint Online Webhook Triggers (TypeScript)
 
 Azure Functions sample for the [SharePoint Online connector](https://learn.microsoft.com/connectors/sharepointonline/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses a typed `connectors.sharepoint` helper, and logs `<FunctionName> trigger received.` followed by each record (or the ID, name, and deletion details for deletion triggers). Use a test site and non-sensitive data.
