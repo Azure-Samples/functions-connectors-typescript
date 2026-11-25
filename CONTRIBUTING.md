@@ -1,35 +1,69 @@
-# Contributing
+# Contributing to Azure Functions connector samples for TypeScript
 
-Keep changes focused on the affected connector and delivery mode. Each `polling/` or `webhook/` app must remain standalone: keep its dependencies, configuration, infrastructure, setup scripts, and README in that folder. Update the README when trigger behavior, prerequisites, or setup changes.
+This project welcomes contributions and suggestions. Most contributions require you to agree to a
+Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
+the rights to use your contribution. For details, visit https://cla.opensource.microsoft.com.
 
-## Local checks
+When you submit a pull request, a CLA bot will automatically determine whether you need to provide
+a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
+provided by the bot. You will only need to do this once across all repos using our CLA.
 
-Use Node.js 24 or later. From every changed sample folder, run:
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
+For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
+contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-```bash
-npm ci --no-audit
-npm run build
-npm audit --audit-level=high
-```
+- [Code of Conduct](#coc)
+- [Issues and Bugs](#issue)
+- [Feature Requests](#feature)
+- [Submission Guidelines](#submit)
 
-The build runs TypeScript compilation and typechecking; audit runs explicitly after installation instead of making a redundant implicit request. Use the existing scripts; do not upgrade unrelated dependencies or suppress audit findings just to make a check pass. Commit the sample's `package-lock.json` when intentionally changing dependencies. Keep verification-only tests and generated output outside the checkout.
+## <a name="coc"></a> Code of Conduct
 
-Build success is not real-event verification. If you intentionally test deployment or connector events, follow that folder's README with your own authorized test resources, record the delivery mode and outcome, and clean up resources. These checks are not part of CI.
+Help us keep this project open and inclusive. Please read and follow our [Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 
-## Pull requests and reports
+## <a name="issue"></a> Found an Issue?
 
-Describe the affected sample paths, behavior change, checks run, and any known limitations. Update [CHANGELOG.md](CHANGELOG.md) under Unreleased for user-facing changes. Use the issue and PR templates; redact logs and payloads before attaching them.
+If you find a bug in the source code or a mistake in the documentation, you can help us by
+[submitting an issue](#submit-issue) to the GitHub Repository. Even better, you can
+[submit a Pull Request](#submit-pr) with a fix.
 
-Never commit `local.settings.json`, `.azure/`, `.env` files, access tokens, system keys, authenticated callback URLs, or private connector data. Use the checked-in settings examples with placeholders instead. Report suspected vulnerabilities privately through [Microsoft Security Response Center](https://msrc.microsoft.com/report/), not a public issue.
+Do not report security vulnerabilities through public issues. Report them to the
+[Microsoft Security Response Center](https://msrc.microsoft.com/report/).
 
-## GitHub Actions
+## <a name="feature"></a> Want a Feature?
 
-CI (`.github/workflows/ci.yml`) runs `npm ci --no-audit`, the existing build script, and an explicit npm audit for all standalone apps, including generic examples. A separate job downloads the Gitleaks v8.30.1 CLI, verifies its SHA-256 hash before extraction, and scans a `git archive HEAD` snapshot. This is current-source scanning only: it excludes Git history and ignored local files such as `local.settings.json`.
+You can *request* a new feature by [submitting an issue](#submit-issue) to the GitHub Repository.
+If you would like to *implement* a new feature, please submit an issue with a proposal for your
+work first, to be sure that we can use it.
 
-To scan locally before opening a PR, run `gitleaks dir <folder> --redact --no-banner` against a copy of the files you intend to commit; avoid scanning ignored private settings.
+- **Small features** can be crafted and directly [submitted as a Pull Request](#submit-pr).
 
-The workflow uses immutable action pins, read-only `contents` permission, and disables persisted checkout credentials. It requires no configured repository or organization secrets and does not start Functions, sign in to Azure, deploy resources, or invoke live connectors.
+## <a name="submit"></a> Submission Guidelines
 
-## Microsoft Learn metadata
+### <a name="submit-issue"></a> Submitting an Issue
 
-Keep HTML-comment-wrapped YAML at the start of runnable connector-specific polling/webhook READMEs. Use `page_type: sample`, languages `typescript`, `bicep`, and `azdeveloper` only when present, products `azure` and `azure-functions`, and a stable unique `urlFragment` ending in `typescript`. Keep names and descriptions under 150 characters. Do not add sample metadata to overview/generic guides or explicitly unvalidated scaffolds.
+Before you submit an issue, search the archive, maybe your question was already answered.
+
+If your issue appears to be a bug, and hasn't been reported, open a new issue. Help us to maximize
+the effort we can spend fixing issues and adding new features by not reporting duplicate issues.
+Use the provided issue templates and do not include credentials, connection strings, or other
+sensitive data.
+
+You can file new issues by providing the above information at the corresponding repository's issues
+link: https://github.com/Azure-Samples/functions-connectors-typescript/issues/new/choose.
+
+### <a name="submit-pr"></a> Submitting a Pull Request (PR)
+
+Before you submit your Pull Request (PR) consider the following guidelines:
+
+- Search the repository (https://github.com/Azure-Samples/functions-connectors-typescript/pulls) for an open or closed PR
+  that relates to your submission. You don't want to duplicate effort.
+- Make your changes in a new git fork.
+- Commit your changes using a descriptive commit message.
+- Push your fork to GitHub.
+- In GitHub, create a pull request and complete the pull request template.
+- If we suggest changes then:
+  - Make the required updates.
+  - Rebase your fork and force push to your GitHub repository (this will update your Pull Request).
+
+That's it! Thank you for your contribution!

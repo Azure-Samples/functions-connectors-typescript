@@ -24,9 +24,9 @@ Each `polling/` and `webhook/` folder is a self-contained Azure Functions app wi
 
 Microsoft Learn sample metadata is attached to the 19 connector-specific standalone polling/webhook READMEs, not the overview or generic guides. Dataflows has a webhook sample only. Metadata does not certify live connector behavior; follow each sample's verification steps.
 
-## Contributing and checks
+## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for scoped changes and local checks, and [CHANGELOG.md](CHANGELOG.md) for unreleased changes. Use the [issue forms](https://github.com/Azure-Samples/functions-connectors-typescript/issues/new/choose) to report sample problems or request improvements without sharing credentials or private data.
+See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute and [CHANGELOG.md](CHANGELOG.md) for notable changes.
 
 GitHub Actions builds/typechecks all 21 apps with Node.js 24 and their checked-in npm lockfiles, audits dependencies, and runs Gitleaks on a snapshot of the current tracked source (not Git history). CI does not sign in to Azure, deploy resources, run connector listeners, or use configured secrets.
 

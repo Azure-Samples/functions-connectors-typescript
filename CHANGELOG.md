@@ -1,7 +1,11 @@
 # Changelog
 
+Notable changes to this project are documented in this file.
+
 ## Unreleased
 
-- Add Microsoft Learn metadata to the 19 connector-specific standalone polling/webhook sample READMEs.
-- Add contribution guidance, bug and feature issue forms, and a pull request template.
-- Add a GitHub Actions workflow that builds/typechecks and audits all 21 standalone apps and runs Gitleaks on the current tracked source.
+### Added
+
+- Microsoft Learn sample metadata for the connector polling and webhook sample READMEs.
+- Contributing guide, issue forms, and pull request template.
+- GitHub Actions CI that builds and audits all 21 TypeScript apps and scans current source with Gitleaks, plus CodeQL and dependency review workflows. CI uses no secrets.

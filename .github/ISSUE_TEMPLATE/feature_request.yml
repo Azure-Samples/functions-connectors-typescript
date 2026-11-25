@@ -1,28 +1,30 @@
-name: Sample improvement
-description: Suggest a connector sample or documentation improvement.
+name: Feature request
+description: Suggest an improvement to the TypeScript connector samples or docs.
 title: "[Feature]: "
+labels: [enhancement]
 body:
   - type: markdown
     attributes:
-      value: Describe the scenario without credentials or private connector data.
+      value: Do not include credentials, account or resource identifiers, callback URLs, or real connector data.
   - type: input
     id: sample
     attributes:
-      label: Connector and delivery mode
-      description: Existing sample path or proposed connector, operation, and polling/webhook mode.
+      label: Sample or connector
+      description: Existing sample path, or a proposed connector, trigger operation, and polling/webhook mode.
+      placeholder: sharepointApp/webhook
     validations:
       required: true
   - type: textarea
     id: problem
     attributes:
       label: Problem or scenario
-      description: What is missing from the current TypeScript samples?
+      description: What developer scenario is missing or unclear today?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
       label: Proposed improvement
-      description: Suggested behavior or documentation, alternatives, and known connector limitations.
+      description: Expected behavior or documentation change, and any permissions, deployment, or connector limitations.
     validations:
       required: true
