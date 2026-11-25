@@ -1,0 +1,28 @@
+name: Sample improvement
+description: Suggest a connector sample or documentation improvement.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: Describe the scenario without credentials or private connector data.
+  - type: input
+    id: sample
+    attributes:
+      label: Connector and delivery mode
+      description: Existing sample path or proposed connector, operation, and polling/webhook mode.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or scenario
+      description: What is missing from the current TypeScript samples?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed improvement
+      description: Suggested behavior or documentation, alternatives, and known connector limitations.
+    validations:
+      required: true

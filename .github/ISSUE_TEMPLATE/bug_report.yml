@@ -1,0 +1,29 @@
+name: Sample bug
+description: Report a problem with a TypeScript connector sample.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: Do not include local settings, keys, tokens, authenticated callback URLs, or private connector data. Report vulnerabilities privately at https://msrc.microsoft.com/report/.
+  - type: input
+    id: sample
+    attributes:
+      label: Sample and trigger
+      description: Folder, polling or webhook mode, and function or connector operation.
+      placeholder: office365App/polling, OnNewEmail
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and expected behavior
+      description: Steps, expected result, actual result, and whether the failure is during build, setup, or event delivery.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and redacted evidence
+      description: OS, Node.js/npm, azd, Azure CLI, Core Tools versions, local or Azure execution, and sanitized errors.
+    validations:
+      required: true

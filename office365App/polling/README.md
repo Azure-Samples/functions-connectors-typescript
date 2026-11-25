@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Office 365 Outlook polling"
+description: Receive Office 365 Outlook email and calendar events with polling in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-office365-polling-typescript
+---
+-->
+
 # Office 365 Outlook Polling Triggers (TypeScript)
 
 Azure Functions sample for the [Office 365 Outlook connector](https://learn.microsoft.com/connectors/office365/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. Each function is in its own file under `src/functions/` and logs only the trigger name and item count.

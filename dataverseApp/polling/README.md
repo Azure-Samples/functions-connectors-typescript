@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Microsoft Dataverse polling"
+description: Receive Microsoft Dataverse row and action events with polling in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-dataverse-polling-typescript
+---
+-->
+
 # Microsoft Dataverse Polling Triggers (TypeScript)
 
 Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). With `deliveryMode: DeliveryMode.Poll`, the host receives events outbound from the Connector Namespace; no public callback or tunnel is needed.

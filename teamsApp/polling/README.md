@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Microsoft Teams polling"
+description: Receive Microsoft Teams message, membership, and meeting events with polling in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-teams-polling-typescript
+---
+-->
+
 # Microsoft Teams Polling Triggers (TypeScript)
 
 Azure Functions sample for the [Microsoft Teams connector](https://learn.microsoft.com/connectors/teams/) using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors) with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback or tunnel is required. Each function is in its own file under `src/functions/`. Typed handlers (`connectors.teams.*`) log only `Received <FunctionName> trigger (<Count> items).`; RAW handlers (`app.connectorTrigger`) return the event envelope unchanged and log `Received <FunctionName> trigger.`

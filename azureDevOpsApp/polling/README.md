@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Azure DevOps polling"
+description: Receive Azure DevOps build, code, and work item events with polling in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-azure-devops-polling-typescript
+---
+-->
+
 # Azure DevOps Polling Triggers (TypeScript)
 
 Azure Functions sample for the [Azure DevOps connector](https://learn.microsoft.com/connectors/visualstudioteamservices/) using `@azure/functions-extensions-connectors` with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback, Function key, or tunnel is required. Each trigger has its own file under `src/functions/`, logs only the trigger name and item count, and returns `context.rawPayload`.

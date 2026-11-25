@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Planner polling"
+description: Receive Planner task events with polling in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-planner-polling-typescript
+---
+-->
+
 # Planner Polling Triggers (TypeScript)
 
 Azure Functions sample for the [Planner connector](https://learn.microsoft.com/connectors/planner/) using `@azure/functions-extensions-connectors` with `deliveryMode: DeliveryMode.Poll`. The host receives events outbound from the Connector Namespace; no public callback, Function key, or tunnel is required. Each function has its own file under `src/functions/`, uses the named Planner SDK helper, logs only the trigger name and task count, and returns `context.rawPayload`.

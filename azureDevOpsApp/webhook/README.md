@@ -1,3 +1,19 @@
+<!--
+---
+name: "Azure Functions Connector Samples (TypeScript): Azure DevOps webhook"
+description: Receive Azure DevOps build, code, and work item events with webhooks in a TypeScript Azure Functions app deployed using azd.
+page_type: sample
+languages:
+- typescript
+- bicep
+- azdeveloper
+products:
+- azure
+- azure-functions
+urlFragment: functions-connectors-azure-devops-webhook-typescript
+---
+-->
+
 # Azure DevOps (formerly Visual Studio Team Services) Webhook Triggers (TypeScript)
 
 Azure Functions sample using [@azure/functions-extensions-connectors](https://www.npmjs.com/package/@azure/functions-extensions-connectors). It handles [Azure DevOps connector](https://learn.microsoft.com/connectors/visualstudioteamservices/) triggers. The Connector Namespace delivers events to the function's public HTTPS callback. Each function is in its own file under `src/functions/`, uses typed payloads, and logs `<FunctionName> trigger received.` followed by a few identifying fields of each build, pull request, push, changeset, or work item.
